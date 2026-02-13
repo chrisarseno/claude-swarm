@@ -1,0 +1,122 @@
+# Example: Continuous Integration Pipeline
+
+name: "CI Pipeline"
+
+instances: 5
+
+tasks:
+  # Stage 1: Preparation
+  - name: "Checkout Code"
+    directory: "."
+    command: "git fetch && git pull"
+    instance: 1
+
+  - name: "Clean Build Artifacts"
+    directory: "."
+    command: "rm -rf build/ dist/ *.egg-info"
+    instance: 2
+
+  # Stage 2: Install Dependencies (parallel)
+  - name: "Install Python Dependencies"
+    directory: "."
+    command: "pip install -r requirements.txt"
+    instance: 1
+    depends_on:
+      - "Checkout Code"
+
+  - name: "Install Node Dependencies"
+    directory: "./frontend"
+    command: "npm ci"
+    instance: 2
+    depends_on:
+      - "Checkout Code"
+
+  # Stage 3: Linting and Type Checking (parallel)
+  - name: "Python Lint"
+    directory: "."
+    command: "ruff check . && black --check ."
+    instance: 3
+    depends_on:
+      - "Install Python Dependencies"
+
+  - name: "JavaScript Lint"
+    directory: "./frontend"
+    command: "npm run lint"
+    instance: 4
+    depends_on:
+      - "Install Node Dependencies"
+
+  - name: "Type Check"
+    directory: "."
+    command: "mypy src/"
+    instance: 5
+    depends_on:
+      - "Install Python Dependencies"
+
+  # Stage 4: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: "pytest tests/unit/ -v --cov"
+    instance: 1
+    depends_on:
+      - "Python Lint"
+
+  - name: "Integration Tests"
+    directory: "."
+    command: "pytest tests/integration/ -v"
+    instance: 2
+    depends_on:
+      - "Python Lint"
+
+  - name: "Frontend Tests"
+    directory: "./frontend"
+    command: "npm test -- --coverage"
+    instance: 3
+    depends_on:
+      - "JavaScript Lint"
+
+  - name: "E2E Tests"
+    directory: "./tests"
+    command: "playwright test"
+    instance: 4
+    depends_on:
+      - "Frontend Tests"
+
+  # Stage 5: Build
+  - name: "Build Backend"
+    directory: "."
+    command: "python setup.py build"
+    instance: 1
+    depends_on:
+      - "Unit Tests"
+      - "Integration Tests"
+
+  - name: "Build Frontend"
+    directory: "./frontend"
+    command: "npm run build"
+    instance: 2
+    depends_on:
+      - "Frontend Tests"
+
+  # Stage 6: Package
+  - name: "Create Distribution"
+    directory: "."
+    command: "python setup.py sdist bdist_wheel"
+    instance: 1
+    depends_on:
+      - "Build Backend"
+      - "Build Frontend"
+
+  # Stage 7: Final Checks
+  - name: "Security Scan"
+    directory: "."
+    command: "bandit -r src/ && npm audit"
+    instance: 3
+    depends_on:
+      - "Create Distribution"
+
+  - name: "Generate Report"
+    directory: "."
+    prompt: "Generate a comprehensive CI pipeline report summarizing all test results, coverage metrics, and any issues found."
+    depends_on:
+      - "Security Scan"

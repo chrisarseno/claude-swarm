@@ -1,0 +1,343 @@
+# Local-First Configuration for Claude Swarm
+# Use only Ollama models - zero API costs, complete privacy
+
+# System Configuration
+system:
+  # Maximum VRAM available (GB)
+  max_vram_gb: 8
+
+  # Automatically pull missing models
+  auto_pull_models: true
+
+  # Maximum concurrent model pulls
+  max_concurrent_pulls: 1
+
+  # Ollama server URL
+  ollama_url: "http://localhost:11434"
+
+# Model Pool - Specialized agents for different tasks
+# Adjust based on your available VRAM
+
+agents:
+  # === FAST AGENTS (for simple, quick tasks) ===
+
+  - id: "fast-1"
+    model: "deepseek-coder:1.3b"
+    quantization: "q4"
+    description: "Tiny fast model for simple tasks"
+    count: 2
+    priority_for:
+      - simple_edits
+      - syntax_fixes
+      - quick_completion
+      - formatting
+    estimated_vram: "1GB"
+
+  - id: "fast-2"
+    model: "mistral:7b"
+    quantization: "q4"
+    description: "Fast general-purpose model"
+    count: 2
+    priority_for:
+      - quick_tasks
+      - documentation
+      - simple_analysis
+    estimated_vram: "4GB"
+
+  # === BALANCED AGENTS (for general coding) ===
+
+  - id: "balanced-1"
+    model: "deepseek-coder:6.7b"
+    quantization: "q4"
+    description: "Excellent balanced code model"
+    count: 3
+    priority_for:
+      - code_generation
+      - code_review
+      - bug_fixing
+      - testing
+      - refactoring
+    estimated_vram: "4GB"
+
+  - id: "balanced-2"
+    model: "codellama:7b"
+    quantization: "q4"
+    description: "Meta's general code model"
+    count: 2
+    priority_for:
+      - code_generation
+      - explanations
+      - multi_language
+    estimated_vram: "4GB"
+
+  # === QUALITY AGENTS (for complex tasks) ===
+  # Uncomment if you have 12GB+ VRAM
+
+  # - id: "quality-1"
+  #   model: "deepseek-coder:33b"
+  #   quantization: "q4"
+  #   description: "High-quality large code model"
+  #   count: 1
+  #   priority_for:
+  #     - complex_refactoring
+  #     - architecture_design
+  #     - security_analysis
+  #     - performance_optimization
+  #   estimated_vram: "18GB"
+
+  # - id: "quality-2"
+  #   model: "codellama:13b"
+  #   quantization: "q4"
+  #   description: "Larger Code Llama for better reasoning"
+  #   count: 1
+  #   priority_for:
+  #     - complex_algorithms
+  #     - detailed_reviews
+  #     - architecture
+  #   estimated_vram: "7GB"
+
+  # === SPECIALIZED AGENTS ===
+
+  - id: "sql-specialist"
+    model: "sqlcoder:7b"
+    quantization: "q4"
+    description: "SQL-specialized model"
+    count: 1
+    priority_for:
+      - sql_generation
+      - query_optimization
+      - database_design
+    estimated_vram: "4GB"
+
+  - id: "python-specialist"
+    model: "wizardcoder-python:7b"
+    quantization: "q4"
+    description: "Python-specialized model"
+    count: 1
+    priority_for:
+      - python_code
+      - python_testing
+      - python_debugging
+    estimated_vram: "4GB"
+
+  - id: "debugging-specialist"
+    model: "wizardcoder:7b"
+    quantization: "q4"
+    description: "Instruction-tuned for debugging"
+    count: 1
+    priority_for:
+      - debugging
+      - bug_finding
+      - error_analysis
+    estimated_vram: "4GB"
+
+# Routing Configuration
+routing:
+  # Prefer fast models for low-priority tasks
+  low_priority_models:
+    - "deepseek-coder:1.3b"
+    - "mistral:7b"
+
+  # Use balanced models for normal tasks
+  normal_priority_models:
+    - "deepseek-coder:6.7b"
+    - "codellama:7b"
+
+  # Use quality models for high-priority tasks
+  high_priority_models:
+    - "deepseek-coder:33b"
+    - "codellama:13b"
+
+  # Use specialized models for specific tasks
+  task_specific_models:
+    sql: "sqlcoder:7b"
+    python: "wizardcoder-python:7b"
+    debugging: "wizardcoder:7b"
+    security: "deepseek-coder:6.7b"  # Best available
+    performance: "deepseek-coder:6.7b"
+
+# Task Assignment Rules
+task_rules:
+  # Simple tasks → Fast models
+  - pattern: ["typo", "format", "simple", "quick", "minor"]
+    priority: "low"
+    use_models: ["deepseek-coder:1.3b", "mistral:7b"]
+
+  # SQL tasks → SQL specialist
+  - pattern: ["sql", "query", "database", "schema"]
+    use_models: ["sqlcoder:7b"]
+
+  # Python tasks → Python specialist
+  - pattern: ["python", ".py", "django", "flask", "fastapi"]
+    use_models: ["wizardcoder-python:7b", "deepseek-coder:6.7b"]
+
+  # Debugging → Debugging specialist
+  - pattern: ["debug", "bug", "error", "fix", "issue"]
+    use_models: ["wizardcoder:7b", "deepseek-coder:6.7b"]
+
+  # Security → Best available
+  - pattern: ["security", "vulnerability", "exploit", "injection"]
+    priority: "high"
+    use_models: ["deepseek-coder:6.7b"]
+
+  # Complex tasks → Quality models (if available)
+  - pattern: ["complex", "refactor", "architecture", "design"]
+    priority: "high"
+    use_models: ["deepseek-coder:33b", "codellama:13b", "deepseek-coder:6.7b"]
+
+  # Default → Balanced models
+  - pattern: ["*"]
+    use_models: ["deepseek-coder:6.7b", "codellama:7b"]
+
+# Performance Settings
+performance:
+  # Maximum tokens per request
+  max_tokens: 4096
+
+  # Temperature (0.0 = deterministic)
+  temperature: 0.0
+
+  # Timeout per request (seconds)
+  timeout: 180
+
+  # Enable parallel execution
+  parallel_execution: true
+
+  # Maximum parallel tasks per model
+  max_parallel_per_model: 2
+
+# Model Management
+model_management:
+  # Automatically download models on first use
+  auto_download: true
+
+  # Keep models loaded in memory (faster, more VRAM)
+  keep_loaded: true
+
+  # Unload inactive models after (seconds)
+  unload_after_seconds: 3600
+
+  # Model update check frequency (hours)
+  check_updates_hours: 24
+
+# Monitoring
+monitoring:
+  # Track model performance
+  track_performance: true
+
+  # Log all requests
+  log_requests: true
+
+  # Performance metrics to track
+  metrics:
+    - tokens_per_second
+    - average_latency
+    - success_rate
+    - model_usage_distribution
+
+# VRAM Profiles
+# Uncomment the profile that matches your hardware
+
+# === 4-6GB VRAM (Entry Level) ===
+# Use only small models, limit concurrent tasks
+vram_profiles:
+  low_vram:
+    max_vram_gb: 6
+    models:
+      - "deepseek-coder:1.3b:q4"  # 1GB
+      - "deepseek-coder:6.7b:q4"  # 4GB
+    max_concurrent_tasks: 2
+    enable: false  # Set to true to use this profile
+
+  # === 8-12GB VRAM (Standard) ===
+  # Recommended for most users
+  medium_vram:
+    max_vram_gb: 12
+    models:
+      - "deepseek-coder:1.3b:q4"   # 1GB - fast
+      - "deepseek-coder:6.7b:q4"   # 4GB - balanced
+      - "codellama:7b:q4"          # 4GB - general
+      - "sqlcoder:7b:q4"           # 4GB - sql
+      - "wizardcoder-python:7b:q4" # 4GB - python
+    max_concurrent_tasks: 3
+    enable: true  # DEFAULT
+
+  # === 16-24GB VRAM (High End) ===
+  # Can run larger, higher-quality models
+  high_vram:
+    max_vram_gb: 24
+    models:
+      - "deepseek-coder:1.3b:q4"   # 1GB - fast
+      - "deepseek-coder:6.7b:q4"   # 4GB - balanced
+      - "deepseek-coder:33b:q4"    # 18GB - quality
+      - "codellama:13b:q4"         # 7GB - quality
+      - "sqlcoder:7b:q4"           # 4GB - sql
+      - "wizardcoder-python:7b:q4" # 4GB - python
+    max_concurrent_tasks: 4
+    enable: false
+
+  # === 32GB+ VRAM (Enthusiast) ===
+  # Can run multiple large models
+  xlarge_vram:
+    max_vram_gb: 40
+    models:
+      - "deepseek-coder:1.3b:q4"  # 1GB - fast
+      - "deepseek-coder:6.7b:q4"  # 4GB - balanced
+      - "deepseek-coder:33b:q4"   # 18GB - quality
+      - "codellama:34b:q4"        # 18GB - quality
+      - "mixtral:8x7b:q4"         # 26GB - best quality
+      - "sqlcoder:7b:q4"          # 4GB - sql
+    max_concurrent_tasks: 5
+    enable: false
+
+# Benchmarking
+benchmarking:
+  # Run benchmarks on startup
+  run_on_startup: false
+
+  # Test prompts for benchmarking
+  test_prompts:
+    - "Write a Python function to reverse a string"
+    - "Write a SQL query to find top 10 customers"
+    - "Debug this function: def sum(a,b): return a+b+1"
+    - "Refactor this code to use list comprehension"
+
+# Cost Savings vs API Models
+cost_comparison:
+  # All Ollama models are FREE!
+  ollama_cost_per_task: 0.00
+
+  # Equivalent API costs for comparison
+  api_costs:
+    claude_haiku: 0.0003
+    claude_sonnet: 0.003
+    claude_opus: 0.015
+    gpt4o: 0.005
+
+  # Estimated tasks per day
+  estimated_daily_tasks: 100
+
+  # Monthly savings using Ollama
+  # (100 tasks/day * 30 days * $0.003 avg API cost)
+  monthly_savings_usd: 9.00
+  yearly_savings_usd: 108.00
+
+# Notes
+notes: |
+  LOCAL-FIRST BENEFITS:
+  ✓ Zero API costs - completely free
+  ✓ Complete privacy - no data leaves your machine
+  ✓ No rate limits - use as much as you want
+  ✓ Works offline - no internet required
+  ✓ Customizable - run any open-source model
+
+  REQUIREMENTS:
+  - Ollama installed (https://ollama.ai)
+  - NVIDIA GPU with 4GB+ VRAM recommended
+  - Or Apple Silicon Mac (M1/M2/M3)
+  - Or CPU-only (slower but works)
+
+  QUICK START:
+  1. Install Ollama
+  2. Run: python -m swarm.cli setup-local
+  3. Start coding with FREE local models!

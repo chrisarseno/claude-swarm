@@ -1,0 +1,125 @@
+# JavaScript/TypeScript Complete Pipeline
+# Comprehensive validation for Node.js projects
+
+name: "JavaScript/TypeScript Complete Pipeline"
+instances: 10
+
+tasks:
+  # Stage 1: Installation & Setup
+  - name: "Install Dependencies"
+    directory: "."
+    command: "npm ci || npm install"
+    instance: 1
+    timeout: 300
+
+  # Stage 2: Formatting & Linting (parallel)
+  - name: "Prettier Format Check"
+    directory: "."
+    command: "npx prettier --check ."
+    instance: 2
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "ESLint Check"
+    directory: "."
+    command: "npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0"
+    instance: 3
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 3: Type Checking
+  - name: "TypeScript Compilation"
+    directory: "."
+    command: "npx tsc --noEmit"
+    instance: 4
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 4: Testing (parallel)
+  - name: "Jest Unit Tests"
+    directory: "."
+    command: "npm test -- --coverage --maxWorkers=50%"
+    instance: 5
+    depends_on: ["ESLint Check"]
+    timeout: 600
+
+  - name: "Jest Watch Tests"
+    directory: "."
+    command: "npm test -- --findRelatedTests --bail"
+    instance: 6
+    depends_on: ["ESLint Check"]
+    timeout: 300
+
+  # Stage 5: Security
+  - name: "NPM Audit"
+    directory: "."
+    command: "npm audit --json || true"
+    instance: 7
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "Snyk Security Scan"
+    directory: "."
+    command: "npx snyk test || true"
+    instance: 8
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 6: Build & Analysis
+  - name: "Build Production"
+    directory: "."
+    command: "npm run build || npx vite build || npx webpack"
+    instance: 9
+    depends_on: ["TypeScript Compilation", "Jest Unit Tests"]
+    timeout: 300
+
+  - name: "Bundle Analysis"
+    directory: "."
+    prompt: |
+      Analyze the build output:
+      1. Check bundle sizes (flag if any bundle > 500KB)
+      2. Identify large dependencies
+      3. Check for duplicate dependencies
+      4. Analyze bundle composition
+      5. Check for source maps
+    instance: 10
+    depends_on: ["Build Production"]
+    timeout: 120
+
+  # Stage 7: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      Generate comprehensive JavaScript/TypeScript pipeline report:
+
+      **Code Quality**:
+      - Prettier formatting issues
+      - ESLint errors and warnings
+      - TypeScript compilation errors
+
+      **Testing**:
+      - Test pass/fail status
+      - Code coverage percentage
+      - Failed test details
+
+      **Security**:
+      - NPM audit vulnerabilities (critical/high/medium/low)
+      - Snyk findings
+      - Outdated dependencies
+
+      **Build**:
+      - Build success/failure
+      - Bundle sizes
+      - Build warnings
+      - Performance metrics
+
+      **Final Verdict**: PASS/FAIL with specific recommendations
+    depends_on:
+      - "Prettier Format Check"
+      - "ESLint Check"
+      - "TypeScript Compilation"
+      - "Jest Unit Tests"
+      - "NPM Audit"
+      - "Snyk Security Scan"
+      - "Build Production"
+      - "Bundle Analysis"
+    priority: high

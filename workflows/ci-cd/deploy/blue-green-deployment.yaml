@@ -1,0 +1,399 @@
+# Blue-Green Deployment
+# Zero-downtime deployment using blue-green strategy
+
+name: "Blue-Green Deployment"
+instances: 8
+priority: high
+
+tasks:
+  # Stage 1: Pre-deployment Validation
+  - name: "Validate Deployment Readiness"
+    prompt: |
+      PRE-DEPLOYMENT VALIDATION:
+
+      Check and confirm:
+      1. Build artifacts available and valid
+      2. Target environment accessible
+      3. Database migrations ready (if any)
+      4. Configuration files prepared
+      5. Rollback plan in place
+      6. Monitoring dashboards accessible
+      7. Team notified of deployment
+
+      RED FLAGS (abort if found):
+      - Critical bugs in staging
+      - Failed tests
+      - Missing artifacts
+      - Database migration issues
+      - Security vulnerabilities
+      - Incomplete rollback plan
+
+      Provide GO / NO-GO decision with reasoning.
+    instance: 1
+    timeout: 300
+    priority: critical
+
+  # Stage 2: Green Environment Preparation (parallel)
+  - name: "Prepare Green Environment"
+    directory: "."
+    command: |
+      # Create/update green environment
+      if command -v kubectl &> /dev/null; then
+        # Kubernetes
+        kubectl apply -f k8s/green/ --namespace=production-green || \
+        kubectl create namespace production-green && kubectl apply -f k8s/green/ --namespace=production-green
+      elif command -v docker &> /dev/null; then
+        # Docker Swarm/Compose
+        docker-compose -f docker-compose.green.yml up -d
+      else
+        # Generic
+        echo "Preparing green environment"
+      fi
+    instance: 2
+    depends_on: ["Validate Deployment Readiness"]
+    timeout: 300
+
+  - name: "Deploy Application to Green"
+    directory: "."
+    command: |
+      # Deploy new version to green environment
+      if command -v kubectl &> /dev/null; then
+        kubectl set image deployment/app app=app:latest -n production-green
+        kubectl rollout status deployment/app -n production-green --timeout=5m
+      elif command -v docker &> /dev/null; then
+        docker service update --image app:latest app_green
+      else
+        # Generic deployment
+        ./deploy.sh green
+      fi
+    instance: 3
+    depends_on: ["Prepare Green Environment"]
+    timeout: 600
+
+  # Stage 3: Green Environment Verification
+  - name: "Database Migration (Green)"
+    directory: "."
+    command: |
+      # Run database migrations in green environment
+      if [ -f "alembic.ini" ]; then
+        alembic upgrade head
+      elif [ -f "manage.py" ]; then
+        python manage.py migrate
+      elif [ -f "flyway.conf" ]; then
+        flyway migrate
+      else
+        echo "No migrations needed"
+      fi
+    instance: 4
+    depends_on: ["Deploy Application to Green"]
+    timeout: 300
+
+  - name: "Health Check Green Environment"
+    prompt: |
+      GREEN ENVIRONMENT HEALTH VERIFICATION:
+
+      Perform comprehensive health checks:
+
+      **Application Health**:
+      1. All pods/services running
+      2. Health endpoint responding (200 OK)
+      3. Ready endpoint responding
+      4. No error logs in last 5 minutes
+      5. Application version correct
+
+      **Infrastructure**:
+      1. Database connectivity
+      2. Cache connectivity (Redis, etc.)
+      3. External API connectivity
+      4. Message queue connectivity
+      5. Storage/S3 connectivity
+
+      **Performance**:
+      1. Response time < baseline
+      2. Memory usage normal
+      3. CPU usage normal
+      4. No resource warnings
+
+      **Data Integrity**:
+      1. Database migration successful
+      2. Data accessible
+      3. No data corruption
+
+      Status: HEALTHY / DEGRADED / UNHEALTHY
+      Ready for traffic: YES / NO
+    instance: 5
+    depends_on: ["Deploy Application to Green", "Database Migration (Green)"]
+    timeout: 300
+    priority: critical
+
+  # Stage 4: Smoke Testing on Green
+  - name: "Run Smoke Tests on Green"
+    directory: "."
+    command: |
+      # Run smoke tests against green environment
+      export TEST_ENV=green
+      export BASE_URL="http://green.internal"
+
+      if [ -f "package.json" ]; then
+        npm run test:smoke
+      elif [ -f "pytest.ini" ]; then
+        pytest tests/smoke/ -v
+      elif [ -f "go.mod" ]; then
+        go test -tags=smoke ./...
+      else
+        echo "Running generic smoke tests"
+        curl -f $BASE_URL/health || exit 1
+      fi
+    instance: 6
+    depends_on: ["Health Check Green Environment"]
+    timeout: 600
+
+  - name: "Performance Test Green"
+    directory: "."
+    command: |
+      # Quick performance test on green
+      k6 run --vus 10 --duration 2m smoke-test.js || \
+      artillery quick --count 10 --num 50 http://green.internal || \
+      echo "Performance test skipped"
+    instance: 7
+    depends_on: ["Health Check Green Environment"]
+    timeout: 300
+
+  # Stage 5: Traffic Switch Preparation
+  - name: "Prepare Traffic Switch"
+    prompt: |
+      TRAFFIC SWITCH READINESS:
+
+      Final checks before switching traffic:
+
+      **Green Environment**:
+      - Health status: [status]
+      - Smoke tests: [passed/failed]
+      - Performance: [acceptable/degraded]
+      - Error rate: [rate]
+
+      **Blue Environment**:
+      - Current traffic: [%]
+      - Error rate: [rate]
+      - Response time: [ms]
+      - Status: [stable/unstable]
+
+      **Rollback Plan**:
+      - Rollback procedure documented: [yes/no]
+      - Rollback time estimate: [minutes]
+      - Blue environment will be kept running: [yes/no]
+
+      **Risk Assessment**:
+      - Overall risk: [low/medium/high]
+      - Concerns: [list]
+
+      Decision: PROCEED / ABORT / DELAY
+      Reasoning: [explanation]
+    instance: 8
+    depends_on: ["Run Smoke Tests on Green", "Performance Test Green"]
+    timeout: 180
+    priority: critical
+
+  # Stage 6: Traffic Switch
+  - name: "Switch Traffic to Green"
+    directory: "."
+    command: |
+      echo "Switching traffic from blue to green..."
+
+      if command -v kubectl &> /dev/null; then
+        # Update service to point to green
+        kubectl patch service app -n production -p '{"spec":{"selector":{"version":"green"}}}'
+        echo "Kubernetes service updated"
+      elif command -v aws &> /dev/null; then
+        # Update ALB/Route53
+        aws elbv2 modify-target-group --target-group-arn $TG_ARN --targets Id=green
+        echo "AWS load balancer updated"
+      else
+        # Generic load balancer update
+        ./switch-traffic.sh blue-to-green
+      fi
+
+      echo "Traffic switched to green environment"
+    instance: 2
+    depends_on: ["Prepare Traffic Switch"]
+    timeout: 120
+    priority: critical
+
+  # Stage 7: Monitor Green with Production Traffic
+  - name: "Monitor Green Environment"
+    prompt: |
+      POST-SWITCH MONITORING (15 minutes):
+
+      Monitor green environment with production traffic:
+
+      **Every 1 minute check**:
+      1. Error rate (should be < 1%)
+      2. Response time (should be < baseline + 10%)
+      3. Throughput (requests/sec)
+      4. Active connections
+      5. CPU usage
+      6. Memory usage
+
+      **Red flags** (trigger rollback):
+      - Error rate > 5%
+      - Response time > 2x baseline
+      - HTTP 5xx errors
+      - Database connection errors
+      - Memory leaks detected
+      - CPU throttling
+
+      **Monitoring Timeline**:
+      - 0-5 min: Critical watch period
+      - 5-10 min: Stability verification
+      - 10-15 min: Sustained performance check
+
+      Status per minute: [report]
+
+      Final decision: STABLE / ROLLBACK NEEDED
+    instance: 5
+    depends_on: ["Switch Traffic to Green"]
+    timeout: 1000
+    priority: critical
+
+  # Stage 8: Deployment Finalization
+  - name: "Finalize Deployment"
+    prompt: |
+      DEPLOYMENT FINALIZATION:
+
+      Based on monitoring results:
+
+      **If Stable**:
+      1. Mark deployment as successful
+      2. Tag green as new production
+      3. Scale down blue (keep for rollback)
+      4. Update deployment records
+      5. Notify team of success
+
+      **If Unstable**:
+      1. Immediately rollback to blue
+      2. Investigate issues
+      3. Keep green for debugging
+      4. Update incident log
+
+      Current Status: [stable/unstable]
+      Action Taken: [finalize/rollback]
+    instance: 1
+    depends_on: ["Monitor Green Environment"]
+    priority: critical
+
+  - name: "Cleanup Blue Environment"
+    directory: "."
+    command: |
+      # Keep blue running for 1 hour for quick rollback
+      echo "Blue environment will be maintained for 1 hour"
+      echo "After 1 hour, scale down blue environment"
+
+      # Schedule cleanup (don't execute immediately)
+      cat > /tmp/cleanup-blue.sh << 'EOF'
+      sleep 3600
+      kubectl scale deployment/app --replicas=1 -n production-blue
+      echo "Blue environment scaled down"
+      EOF
+
+      # Or immediately remove if confident
+      # kubectl delete namespace production-blue
+    instance: 3
+    depends_on: ["Finalize Deployment"]
+    timeout: 60
+
+  # Stage 9: Post-Deployment
+  - name: "Generate Deployment Report"
+    prompt: |
+      BLUE-GREEN DEPLOYMENT COMPREHENSIVE REPORT:
+
+      **Deployment Summary**:
+      - Deployment ID: [id]
+      - Started: [timestamp]
+      - Completed: [timestamp]
+      - Duration: [minutes]
+      - Status: [SUCCESS/FAILED/ROLLED BACK]
+
+      **Version Information**:
+      - Previous version (blue): [version]
+      - New version (green): [version]
+      - Commit hash: [hash]
+      - Branch: [branch]
+
+      **Environment**:
+      - Namespace: production
+      - Cluster: [cluster name]
+      - Region: [region]
+
+      **Pre-Deployment**:
+      - Validation: [passed/failed]
+      - Build artifacts: [verified]
+      - Health checks: [passed]
+
+      **Deployment Process**:
+      - Green environment created: [yes/no]
+      - Application deployed: [yes/no]
+      - Database migrations: [success/failed/n/a]
+      - Health checks passed: [yes/no]
+      - Smoke tests: [passed/failed]
+
+      **Traffic Switch**:
+      - Switch time: [timestamp]
+      - Downtime: [0 seconds] (blue-green = zero downtime)
+      - Traffic successfully switched: [yes/no]
+
+      **Post-Switch Monitoring**:
+      - Monitoring duration: [15 minutes]
+      - Error rate: [%]
+      - Response time: [ms] (baseline: [ms])
+      - Throughput: [req/s]
+      - Stability: [stable/unstable]
+
+      **Metrics Comparison** (Blue vs Green):
+      Metric | Blue | Green | Change
+      -------|------|-------|-------
+      Error rate | [%] | [%] | [+/-%]
+      Response time | [ms] | [ms] | [+/-%]
+      Throughput | [req/s] | [req/s] | [+/-%]
+      CPU usage | [%] | [%] | [+/-%]
+      Memory usage | [MB] | [MB] | [+/-%]
+
+      **Issues Encountered**:
+      [List any issues and resolutions]
+
+      **Rollback Status**:
+      - Rollback needed: [yes/no]
+      - Blue environment status: [running/stopped]
+      - Rollback time estimate: [minutes]
+
+      **Post-Deployment Actions**:
+      - [ ] Update monitoring dashboards
+      - [ ] Update documentation
+      - [ ] Notify stakeholders
+      - [ ] Schedule blue cleanup
+      - [ ] Update deployment records
+
+      **Lessons Learned**:
+      [Any observations or improvements for next time]
+
+      **Final Status**: SUCCESS / FAILED / ROLLED BACK
+      **Deployment Quality**: [Excellent/Good/Acceptable/Poor]
+    depends_on:
+      - "Validate Deployment Readiness"
+      - "Deploy Application to Green"
+      - "Health Check Green Environment"
+      - "Run Smoke Tests on Green"
+      - "Switch Traffic to Green"
+      - "Monitor Green Environment"
+      - "Finalize Deployment"
+    priority: high
+
+# BLUE-GREEN DEPLOYMENT NOTES:
+# - Zero downtime deployment strategy
+# - Quick rollback capability
+# - Requires double infrastructure temporarily
+# - Suitable for production deployments
+# - Blue environment kept for fast rollback
+# - Green fully tested before traffic switch
+# - Monitoring critical after switch
+# - Database migrations must be backward compatible
+# - Use feature flags for breaking changes

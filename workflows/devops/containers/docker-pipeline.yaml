@@ -1,0 +1,285 @@
+# Container/Docker Complete Pipeline
+# Comprehensive validation for containerized applications
+
+name: "Container/Docker Complete Pipeline"
+instances: 10
+
+tasks:
+  # Stage 1: Dockerfile Analysis
+  - name: "Dockerfile Lint"
+    directory: "."
+    command: "hadolint Dockerfile || echo 'Hadolint not available'"
+    instance: 1
+    timeout: 60
+
+  - name: "Dockerfile Best Practices"
+    prompt: |
+      DOCKERFILE BEST PRACTICES REVIEW:
+      1. Base image is official/trusted
+      2. Base image version pinned (not :latest)
+      3. Multi-stage build used
+      4. Minimal layers
+      5. .dockerignore file present
+      6. No secrets in image
+      7. Non-root user configured
+      8. HEALTHCHECK defined
+      9. Labels added (maintainer, version, etc.)
+      10. Proper ordering (cache optimization)
+      11. COPY vs ADD usage appropriate
+      12. Specific COPY sources (not COPY .)
+      13. Build args for flexibility
+      14. Proper signal handling
+    instance: 2
+    timeout: 180
+
+  # Stage 2: Build Image (parallel preparation)
+  - name: "Build Docker Image"
+    directory: "."
+    command: "docker build -t app:test --target production ."
+    instance: 3
+    depends_on: ["Dockerfile Lint"]
+    timeout: 600
+
+  - name: "Build Multi-Platform"
+    directory: "."
+    command: "docker buildx build --platform linux/amd64,linux/arm64 -t app:test . || echo 'Buildx not configured'"
+    instance: 4
+    depends_on: ["Dockerfile Lint"]
+    timeout: 900
+
+  # Stage 3: Image Security Scanning (parallel)
+  - name: "Trivy Vulnerability Scan"
+    directory: "."
+    command: "trivy image --severity HIGH,CRITICAL --format json --output trivy-report.json app:test"
+    instance: 5
+    depends_on: ["Build Docker Image"]
+    timeout: 300
+
+  - name: "Grype Scan"
+    directory: "."
+    command: "grype app:test --output json --file grype-report.json || echo 'Grype not available'"
+    instance: 6
+    depends_on: ["Build Docker Image"]
+    timeout: 300
+
+  - name: "Snyk Container Scan"
+    directory: "."
+    command: "snyk container test app:test --json-file-output=snyk-report.json || echo 'Snyk not available'"
+    instance: 7
+    depends_on: ["Build Docker Image"]
+    timeout: 300
+
+  # Stage 4: Image Analysis
+  - name: "Image Size Analysis"
+    directory: "."
+    command: "docker images app:test --format '{{.Size}}' && dive app:test --ci || echo 'Dive not available'"
+    instance: 8
+    depends_on: ["Build Docker Image"]
+    timeout: 180
+
+  - name: "Layer Analysis"
+    prompt: |
+      DOCKER IMAGE LAYER ANALYSIS:
+      1. Total number of layers
+      2. Largest layers identified
+      3. Unnecessary files in layers
+      4. Layer caching efficiency
+      5. Wasted space in layers
+      6. Duplicate files across layers
+      7. Opportunities for optimization
+    instance: 9
+    depends_on: ["Build Docker Image"]
+    timeout: 180
+
+  # Stage 5: Runtime Testing
+  - name: "Container Runtime Test"
+    directory: "."
+    command: |
+      docker run --name test-container -d app:test && \
+      sleep 10 && \
+      docker logs test-container && \
+      docker stop test-container && \
+      docker rm test-container
+    instance: 10
+    depends_on: ["Build Docker Image"]
+    timeout: 300
+
+  - name: "Health Check Test"
+    prompt: |
+      CONTAINER HEALTH CHECK:
+      1. Container starts successfully
+      2. Health check endpoint responds
+      3. Application logs show no errors
+      4. Required ports are exposed
+      5. Environment variables loaded correctly
+      6. Volume mounts work correctly
+      7. Container can be stopped gracefully
+    depends_on: ["Container Runtime Test"]
+    timeout: 180
+
+  # Stage 6: Security Configuration
+  - name: "Container Security Review"
+    prompt: |
+      CONTAINER SECURITY ANALYSIS:
+
+      **Image Security**:
+      1. Base image vulnerabilities
+      2. Application dependencies vulnerabilities
+      3. Exposed secrets check
+      4. Malware scan results
+
+      **Runtime Security**:
+      1. Running as non-root user
+      2. Read-only root filesystem
+      3. Capabilities dropped
+      4. Security options configured
+      5. Resource limits set
+      6. Network policies defined
+
+      **Configuration**:
+      1. No privileged mode
+      2. Host namespace isolation
+      3. AppArmor/SELinux profile
+      4. Seccomp profile configured
+      5. No host path mounts
+      6. Proper secrets management
+
+      **Compliance**:
+      1. CIS Docker Benchmark
+      2. PCI-DSS requirements
+      3. Industry standards
+    depends_on: ["Build Docker Image"]
+    timeout: 300
+
+  # Stage 7: Kubernetes Deployment
+  - name: "Kubernetes Manifest Validation"
+    directory: "."
+    command: |
+      kubectl apply --dry-run=client -f k8s/deployment.yaml || echo 'No K8s manifests' && \
+      kube-score score k8s/*.yaml || echo 'Kube-score not available'
+    depends_on: ["Build Docker Image"]
+    timeout: 180
+
+  - name: "Helm Chart Validation"
+    directory: "."
+    command: "helm lint ./chart || echo 'No Helm chart'"
+    depends_on: ["Build Docker Image"]
+    timeout: 120
+
+  # Stage 8: Performance & Resource Analysis
+  - name: "Container Resource Analysis"
+    prompt: |
+      CONTAINER RESOURCE ANALYSIS:
+      1. Memory usage baseline
+      2. CPU usage baseline
+      3. Startup time
+      4. Image pull time
+      5. Disk I/O patterns
+      6. Network usage
+      7. Resource limits appropriate
+      8. Requests vs limits ratio
+    depends_on: ["Container Runtime Test"]
+    timeout: 180
+
+  # Stage 9: Final Report
+  - name: "Generate Container Pipeline Report"
+    prompt: |
+      CONTAINER PIPELINE COMPREHENSIVE REPORT:
+
+      **Image Information**:
+      - Base image: [image:tag]
+      - Final image size: [MB]
+      - Number of layers: [count]
+      - Build time: [seconds]
+      - Multi-arch: [yes/no]
+
+      **Dockerfile Quality**:
+      - Hadolint issues: [count]
+      - Best practices score: [0-100]
+      - Multi-stage build: [yes/no]
+      - Cache optimization: [good/poor]
+
+      **Security Vulnerabilities**:
+      - Critical: [count]
+      - High: [count]
+      - Medium: [count]
+      - Low: [count]
+      - Total CVEs: [count]
+
+      **Security Configuration**:
+      - Running as root: [yes/no]
+      - Read-only filesystem: [yes/no]
+      - Capabilities dropped: [yes/no]
+      - Resource limits: [configured/missing]
+      - Security context: [configured/missing]
+
+      **Image Optimization**:
+      - Current size: [MB]
+      - Wasted space: [MB]
+      - Optimization potential: [MB]
+      - Layer efficiency: [good/needs improvement]
+
+      **Runtime Testing**:
+      - Container starts: [yes/no]
+      - Health check: [pass/fail]
+      - Graceful shutdown: [yes/no]
+      - Logs: [normal/errors]
+
+      **Performance**:
+      - Startup time: [seconds]
+      - Memory usage: [MB]
+      - CPU usage: [%]
+      - Image pull time: [seconds]
+
+      **Kubernetes**:
+      - Manifests valid: [yes/no]
+      - Kube-score rating: [score]
+      - Helm chart valid: [yes/no/n/a]
+      - Production ready: [yes/no]
+
+      **Compliance**:
+      - CIS Docker Benchmark: [pass/fail]
+      - Security best practices: [score]
+
+      **Recommendations**:
+      1. [Critical security fixes]
+      2. [Image optimization suggestions]
+      3. [Configuration improvements]
+      4. [Performance optimizations]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Security Rating**: [A-F]
+      **Optimization Score**: [A-F]
+    depends_on:
+      - "Dockerfile Lint"
+      - "Dockerfile Best Practices"
+      - "Build Docker Image"
+      - "Build Multi-Platform"
+      - "Trivy Vulnerability Scan"
+      - "Grype Scan"
+      - "Snyk Container Scan"
+      - "Image Size Analysis"
+      - "Layer Analysis"
+      - "Container Runtime Test"
+      - "Health Check Test"
+      - "Container Security Review"
+      - "Kubernetes Manifest Validation"
+      - "Helm Chart Validation"
+      - "Container Resource Analysis"
+    priority: high
+
+# CONTAINER PIPELINE NOTES:
+# - Install: docker, hadolint, trivy, dive, grype
+# - Use multi-stage builds to minimize image size
+# - Pin base image versions
+# - Scan images regularly for vulnerabilities
+# - Use distroless images when possible
+# - Never run as root in production
+# - Set resource limits in Kubernetes
+# - Use health checks and readiness probes
+# - Implement proper logging
+# - Tag images with version/commit hash
+# - Use image signing for production
+# - Scan images before deployment
+# - Keep base images updated

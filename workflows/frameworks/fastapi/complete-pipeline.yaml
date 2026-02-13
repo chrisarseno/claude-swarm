@@ -1,0 +1,320 @@
+# FastAPI Complete Pipeline
+# Comprehensive validation for FastAPI applications
+
+name: "FastAPI Complete Pipeline"
+instances: 12
+
+tasks:
+  # Stage 1: Setup
+  - name: "Install Dependencies"
+    directory: "."
+    command: "pip install -r requirements.txt && pip install -r requirements-dev.txt"
+    instance: 1
+    timeout: 300
+
+  # Stage 2: Code Quality (parallel)
+  - name: "Black Formatting"
+    directory: "."
+    command: "black --check ."
+    instance: 2
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "isort Imports"
+    directory: "."
+    command: "isort --check-only ."
+    instance: 3
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "Flake8 Linting"
+    directory: "."
+    command: "flake8 . --max-line-length=88"
+    instance: 4
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "MyPy Type Checking"
+    directory: "."
+    command: "mypy . --ignore-missing-imports"
+    instance: 5
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 3: FastAPI-Specific Checks (parallel)
+  - name: "Pydantic Model Validation"
+    prompt: |
+      PYDANTIC MODEL REVIEW:
+      1. Check all models have proper type hints
+      2. Verify validation decorators usage
+      3. Check for proper field defaults
+      4. Review validators are tested
+      5. Check for circular dependencies
+      6. Verify Config class settings
+      7. Check for proper schema_extra usage
+      8. Review alias usage
+    instance: 6
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "API Endpoint Analysis"
+    prompt: |
+      FASTAPI ENDPOINT REVIEW:
+      1. Check proper dependency injection
+      2. Verify response models defined
+      3. Check status codes are appropriate
+      4. Verify error handling
+      5. Check for proper authentication/authorization
+      6. Review rate limiting implementation
+      7. Check CORS configuration
+      8. Verify request validation
+      9. Check for proper async usage
+      10. Review middleware configuration
+    instance: 7
+    depends_on: ["Install Dependencies"]
+    timeout: 300
+
+  # Stage 4: Security Scanning (parallel)
+  - name: "Bandit Security Scan"
+    directory: "."
+    command: "bandit -r . -f json -o bandit-report.json || true"
+    instance: 8
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "Safety Check"
+    directory: "."
+    command: "safety check --json || true"
+    instance: 9
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "API Security Analysis"
+    prompt: |
+      FASTAPI SECURITY REVIEW:
+      1. Authentication implementation (JWT/OAuth2)
+      2. Authorization checks on endpoints
+      3. Input validation completeness
+      4. SQL injection prevention
+      5. CORS configuration security
+      6. Rate limiting implementation
+      7. API key management
+      8. Secrets management
+      9. HTTPS enforcement
+      10. Security headers
+      11. CSRF protection
+      12. Request size limits
+    instance: 10
+    depends_on: ["Install Dependencies"]
+    timeout: 300
+
+  # Stage 5: Testing (parallel)
+  - name: "Pytest Unit Tests"
+    directory: "."
+    command: "pytest tests/unit/ -v --tb=short"
+    instance: 11
+    depends_on: ["Install Dependencies"]
+    timeout: 600
+
+  - name: "Pytest API Tests"
+    directory: "."
+    command: "pytest tests/api/ -v"
+    instance: 12
+    depends_on: ["Install Dependencies"]
+    timeout: 900
+
+  - name: "Test Coverage"
+    directory: "."
+    command: "pytest --cov=app --cov-report=term-missing --cov-report=html"
+    depends_on: ["Pytest Unit Tests"]
+    timeout: 600
+
+  # Stage 6: API Documentation & Validation
+  - name: "OpenAPI Schema Validation"
+    prompt: |
+      OPENAPI SCHEMA REVIEW:
+      1. Generate OpenAPI schema
+      2. Validate schema completeness
+      3. Check all endpoints documented
+      4. Verify request/response examples
+      5. Check proper tags and descriptions
+      6. Verify security schemes defined
+      7. Check for proper versioning
+      8. Validate against OpenAPI 3.0 spec
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "API Documentation Quality"
+    prompt: |
+      API DOCUMENTATION COMPLETENESS:
+      1. All endpoints have descriptions
+      2. Request parameters documented
+      3. Response codes documented
+      4. Error responses documented
+      5. Authentication requirements clear
+      6. Rate limits documented
+      7. Examples provided
+      8. Changelog maintained
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 7: Performance Analysis
+  - name: "Performance Review"
+    prompt: |
+      FASTAPI PERFORMANCE ANALYSIS:
+      1. Proper async/await usage
+      2. Database connection pooling
+      3. Caching implementation
+      4. N+1 query prevention
+      5. Pagination implementation
+      6. Background task usage
+      7. Response compression
+      8. Static file handling
+      9. Dependency injection efficiency
+      10. Middleware performance impact
+    depends_on: ["Install Dependencies"]
+    timeout: 300
+
+  - name: "Database Analysis"
+    prompt: |
+      DATABASE OPTIMIZATION:
+      1. Check for missing indexes
+      2. Review query efficiency
+      3. Check for N+1 queries
+      4. Verify connection pooling
+      5. Check transaction usage
+      6. Review ORM query generation
+      7. Check for query caching
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 8: Dependency & Configuration
+  - name: "Dependency Check"
+    directory: "."
+    command: "pip list --outdated || true"
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "Configuration Review"
+    prompt: |
+      FASTAPI CONFIGURATION REVIEW:
+      1. Environment variables properly used
+      2. Settings class properly configured
+      3. No hardcoded secrets
+      4. Database URL configuration
+      5. CORS settings appropriate
+      6. Debug mode disabled in production
+      7. Logging configured
+      8. Timezone handling
+      9. File upload limits set
+      10. Request timeout configured
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 9: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      FASTAPI PIPELINE COMPREHENSIVE REPORT:
+
+      **Environment**:
+      - Python version: [version]
+      - FastAPI version: [version]
+      - Uvicorn version: [version]
+
+      **Code Quality**:
+      - Black formatting: [status]
+      - isort status: [status]
+      - Flake8 issues: [count]
+      - MyPy errors: [count]
+      - Type hint coverage: [%]
+
+      **API Design**:
+      - Total endpoints: [count]
+      - Pydantic models: [count]
+      - Dependency injection usage: [good/needs improvement]
+      - Response models: [defined/missing]
+      - Error handling: [complete/incomplete]
+
+      **Security**:
+      - Bandit findings: [count]
+      - Safety vulnerabilities: [count]
+      - Authentication: [implemented/missing]
+      - Authorization: [implemented/missing]
+      - Input validation: [complete/incomplete]
+      - CORS: [configured/not configured]
+      - Rate limiting: [implemented/missing]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - API tests: [passed/failed] ([X/Y])
+      - Code coverage: [%]
+      - Endpoint coverage: [%]
+
+      **Documentation**:
+      - OpenAPI schema: [valid/invalid]
+      - Endpoints documented: [%]
+      - Examples provided: [yes/no]
+      - Authentication documented: [yes/no]
+
+      **Performance**:
+      - Async usage: [optimal/needs improvement]
+      - Database pooling: [configured/missing]
+      - Caching: [implemented/missing]
+      - N+1 queries: [count]
+      - Background tasks: [used appropriately/not used]
+
+      **Dependencies**:
+      - Total packages: [count]
+      - Outdated: [count]
+      - Vulnerabilities: [count]
+
+      **Configuration**:
+      - Environment variables: [properly used/hardcoded values]
+      - Debug mode: [appropriate for environment]
+      - Logging: [configured/not configured]
+
+      **Best Practices**:
+      - Dependency injection: [score]
+      - Error handling: [score]
+      - Async patterns: [score]
+      - API versioning: [implemented/missing]
+      - Request validation: [comprehensive/incomplete]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **API Quality**: [A-F]
+      **Security Rating**: [A-F]
+    depends_on:
+      - "Black Formatting"
+      - "isort Imports"
+      - "Flake8 Linting"
+      - "MyPy Type Checking"
+      - "Pydantic Model Validation"
+      - "API Endpoint Analysis"
+      - "Bandit Security Scan"
+      - "Safety Check"
+      - "API Security Analysis"
+      - "Pytest Unit Tests"
+      - "Pytest API Tests"
+      - "Test Coverage"
+      - "OpenAPI Schema Validation"
+      - "API Documentation Quality"
+      - "Performance Review"
+      - "Database Analysis"
+      - "Configuration Review"
+    priority: high
+
+# FASTAPI PIPELINE NOTES:
+# - Requires Python 3.8+
+# - Install dev dependencies: pytest, black, mypy, etc.
+# - Use pytest-asyncio for async tests
+# - Configure pytest.ini for test discovery
+# - Use TestClient for API testing
+# - Implement dependency overrides for testing
+# - Use Alembic for database migrations
+# - Consider using Redis for caching
+# - Implement proper logging with structlog
+# - Use Pydantic Settings for configuration

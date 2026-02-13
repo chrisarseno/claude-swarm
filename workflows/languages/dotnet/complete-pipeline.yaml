@@ -1,0 +1,278 @@
+# .NET Complete Pipeline
+# Comprehensive validation for .NET/C# projects
+
+name: ".NET Complete Pipeline"
+instances: 11
+
+tasks:
+  # Stage 1: Restore & Setup
+  - name: "Restore Dependencies"
+    directory: "."
+    command: "dotnet restore"
+    instance: 1
+    timeout: 300
+
+  - name: "Clean Build"
+    directory: "."
+    command: "dotnet clean"
+    instance: 2
+    depends_on: ["Restore Dependencies"]
+    timeout: 120
+
+  # Stage 2: Build & Compile
+  - name: "Build Debug"
+    directory: "."
+    command: "dotnet build --configuration Debug --no-restore"
+    instance: 3
+    depends_on: ["Restore Dependencies", "Clean Build"]
+    timeout: 300
+
+  - name: "Build Release"
+    directory: "."
+    command: "dotnet build --configuration Release --no-restore"
+    instance: 4
+    depends_on: ["Restore Dependencies", "Clean Build"]
+    timeout: 300
+
+  # Stage 3: Code Analysis (parallel)
+  - name: "Roslyn Analyzers"
+    directory: "."
+    command: "dotnet build /p:EnforceCodeStyleInBuild=true /p:TreatWarningsAsErrors=false"
+    instance: 5
+    depends_on: ["Build Debug"]
+    timeout: 300
+
+  - name: "StyleCop Analysis"
+    directory: "."
+    command: "dotnet build /p:StyleCopEnabled=true || true"
+    instance: 6
+    depends_on: ["Build Debug"]
+    timeout: 180
+
+  - name: "FxCop Analysis"
+    directory: "."
+    command: "dotnet build /p:RunAnalyzersDuringBuild=true || true"
+    instance: 7
+    depends_on: ["Build Debug"]
+    timeout: 180
+
+  # Stage 4: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: "dotnet test --filter Category=Unit --no-build --configuration Debug"
+    instance: 8
+    depends_on: ["Build Debug"]
+    timeout: 600
+
+  - name: "Integration Tests"
+    directory: "."
+    command: "dotnet test --filter Category=Integration --no-build --configuration Debug"
+    instance: 9
+    depends_on: ["Build Debug"]
+    timeout: 900
+
+  - name: "Test Coverage"
+    directory: "."
+    command: "dotnet test --collect:'XPlat Code Coverage' --results-directory ./TestResults/"
+    instance: 10
+    depends_on: ["Build Debug"]
+    timeout: 600
+
+  # Stage 5: Security Scanning
+  - name: "Security Scan"
+    directory: "."
+    command: |
+      dotnet list package --vulnerable || true
+      dotnet list package --deprecated || true
+    instance: 11
+    depends_on: ["Restore Dependencies"]
+    timeout: 180
+
+  - name: "Code Security Analysis"
+    prompt: |
+      .NET SECURITY ANALYSIS:
+      1. Check for SQL injection vulnerabilities
+      2. Verify proper input validation
+      3. Check authentication/authorization usage
+      4. Review cryptography implementation
+      5. Check for insecure deserialization
+      6. Verify HTTPS enforcement
+      7. Check for XSS vulnerabilities
+      8. Review error handling (no sensitive info leaks)
+      9. Check connection string security
+      10. Verify secure random number generation
+    depends_on: ["Build Debug"]
+    timeout: 300
+
+  # Stage 6: Package Analysis
+  - name: "NuGet Package Analysis"
+    prompt: |
+      NUGET PACKAGE REVIEW:
+      1. List all packages and versions
+      2. Identify outdated packages
+      3. Check for deprecated packages
+      4. Identify transitive dependency issues
+      5. Check for package version conflicts
+      6. Verify no preview/beta packages in production
+      7. Check package licenses
+      8. Identify unused package references
+    depends_on: ["Restore Dependencies"]
+    timeout: 180
+
+  # Stage 7: Code Quality
+  - name: "Code Metrics"
+    directory: "."
+    command: "dotnet build /p:GenerateDocumentationFile=true || true"
+    depends_on: ["Build Release"]
+    timeout: 180
+
+  - name: "Code Quality Analysis"
+    prompt: |
+      .NET CODE QUALITY REVIEW:
+
+      **Complexity**:
+      1. Classes > 500 lines
+      2. Methods > 50 lines
+      3. Cyclomatic complexity > 10
+      4. Deep nesting (>4 levels)
+      5. Long parameter lists (>5 params)
+
+      **Best Practices**:
+      1. Async/await usage
+      2. IDisposable implementation
+      3. Nullable reference types
+      4. LINQ usage vs loops
+      5. Exception handling patterns
+      6. Dependency injection usage
+
+      **Design Patterns**:
+      1. Repository pattern usage
+      2. Factory pattern usage
+      3. Strategy pattern usage
+      4. SOLID principles adherence
+
+      **Performance**:
+      1. String concatenation in loops
+      2. Unnecessary boxing/unboxing
+      3. Inefficient LINQ queries
+      4. Memory leaks (event handlers)
+      5. Async over sync calls
+    depends_on: ["Build Release"]
+    timeout: 300
+
+  # Stage 8: Packaging
+  - name: "Package Application"
+    directory: "."
+    command: "dotnet publish --configuration Release --output ./publish/"
+    depends_on: ["Build Release", "Unit Tests"]
+    timeout: 300
+
+  - name: "Docker Build"
+    directory: "."
+    command: "docker build -t app:latest . || echo 'Dockerfile not found, skipping'"
+    depends_on: ["Package Application"]
+    timeout: 600
+
+  # Stage 9: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      .NET PIPELINE COMPREHENSIVE REPORT:
+
+      **Build Information**:
+      - .NET version: [version]
+      - Target framework: [netX.X]
+      - Project type: [Console/Web/Library/etc]
+      - Configuration: [Debug/Release]
+
+      **Compilation**:
+      - Debug build: [success/failure]
+      - Release build: [success/failure]
+      - Build warnings: [count]
+      - Build errors: [count]
+
+      **Code Analysis**:
+      - Roslyn analyzer issues: [count]
+      - StyleCop violations: [count]
+      - FxCop warnings: [count]
+      - Code analysis warnings: [count]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - Integration tests: [passed/failed] ([X/Y])
+      - Code coverage: [%]
+      - Branch coverage: [%]
+      - Failed tests: [details]
+
+      **Security**:
+      - Vulnerable packages: [count]
+      - Deprecated packages: [count]
+      - Security warnings: [count]
+      - CVE findings: [list]
+      - Security best practices: [assessment]
+
+      **NuGet Packages**:
+      - Total packages: [count]
+      - Outdated: [count]
+      - Deprecated: [count]
+      - Conflicts: [count]
+      - License issues: [if any]
+
+      **Code Quality**:
+      - Maintainability index: [score]
+      - Cyclomatic complexity: [average]
+      - Lines of code: [count]
+      - Comment density: [%]
+      - Code smells: [count]
+
+      **Performance**:
+      - Async usage: [good/needs improvement]
+      - Memory management: [assessment]
+      - LINQ efficiency: [assessment]
+      - String handling: [assessment]
+
+      **Best Practices**:
+      - SOLID principles: [score]
+      - Dependency injection: [used/not used]
+      - Nullable reference types: [enabled/disabled]
+      - XML documentation: [%]
+      - Exception handling: [assessment]
+
+      **Package**:
+      - Published size: [MB]
+      - Self-contained: [yes/no]
+      - Docker image: [built/not built]
+      - Docker image size: [MB]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Quality Gate**: [PASSED/FAILED]
+      **Security Rating**: [A-F]
+    depends_on:
+      - "Build Debug"
+      - "Build Release"
+      - "Roslyn Analyzers"
+      - "StyleCop Analysis"
+      - "FxCop Analysis"
+      - "Unit Tests"
+      - "Integration Tests"
+      - "Test Coverage"
+      - "Security Scan"
+      - "Code Security Analysis"
+      - "NuGet Package Analysis"
+      - "Code Quality Analysis"
+      - "Package Application"
+      - "Docker Build"
+    priority: high
+
+# .NET PIPELINE NOTES:
+# - Requires .NET SDK 6.0 or later
+# - Enable nullable reference types in .csproj
+# - Configure .editorconfig for code style
+# - Use Directory.Build.props for shared properties
+# - Enable WarningsAsErrors for critical projects
+# - Configure code analyzers in .csproj
+# - Use launchSettings.json for environment config
+# - Consider using central package management

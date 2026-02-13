@@ -1,0 +1,344 @@
+# Performance Testing Pipeline
+# Comprehensive load, stress, and performance testing
+
+name: "Performance Testing Pipeline"
+instances: 8
+
+tasks:
+  # Stage 1: Setup & Baseline
+  - name: "Performance Test Setup"
+    prompt: |
+      PERFORMANCE TEST PREPARATION:
+      1. Identify test endpoints/scenarios
+      2. Define performance baselines
+      3. Set acceptance criteria
+      4. Identify test data requirements
+      5. Define load patterns
+      6. Set duration for each test type
+      7. Identify monitoring points
+    instance: 1
+    timeout: 180
+
+  - name: "Collect Baseline Metrics"
+    prompt: |
+      BASELINE METRICS COLLECTION:
+      1. Response time (p50, p95, p99)
+      2. Throughput (requests/sec)
+      3. Error rate (%)
+      4. CPU usage (%)
+      5. Memory usage (MB)
+      6. Database connections
+      7. Cache hit rate
+      8. Network I/O
+    instance: 2
+    timeout: 120
+
+  # Stage 2: Load Testing (parallel different scenarios)
+  - name: "Light Load Test"
+    directory: "."
+    command: |
+      k6 run --vus 10 --duration 5m \
+        --out json=light-load-results.json \
+        load-test.js || \
+      artillery run --count 10 --duration 300 load-test.yml || \
+      echo 'Load testing tool not available'
+    instance: 3
+    depends_on: ["Performance Test Setup"]
+    timeout: 400
+
+  - name: "Normal Load Test"
+    directory: "."
+    command: |
+      k6 run --vus 50 --duration 10m \
+        --out json=normal-load-results.json \
+        load-test.js || \
+      artillery run --count 50 --duration 600 load-test.yml || \
+      echo 'Load testing tool not available'
+    instance: 4
+    depends_on: ["Performance Test Setup"]
+    timeout: 700
+
+  - name: "Peak Load Test"
+    directory: "."
+    command: |
+      k6 run --vus 200 --duration 15m \
+        --out json=peak-load-results.json \
+        load-test.js || \
+      artillery run --count 200 --duration 900 load-test.yml || \
+      echo 'Load testing tool not available'
+    instance: 5
+    depends_on: ["Performance Test Setup"]
+    timeout: 1000
+
+  # Stage 3: Stress Testing
+  - name: "Stress Test"
+    directory: "."
+    command: |
+      k6 run --vus 500 --duration 10m \
+        --out json=stress-test-results.json \
+        stress-test.js || \
+      echo 'Stress testing not configured'
+    instance: 6
+    depends_on: ["Normal Load Test"]
+    timeout: 700
+
+  - name: "Spike Test"
+    directory: "."
+    command: |
+      k6 run --stages 1m:10,30s:200,1m:10 \
+        --out json=spike-test-results.json \
+        load-test.js || \
+      echo 'Spike testing not configured'
+    instance: 7
+    depends_on: ["Normal Load Test"]
+    timeout: 300
+
+  # Stage 4: Endurance Testing
+  - name: "Soak Test"
+    directory: "."
+    command: |
+      k6 run --vus 50 --duration 2h \
+        --out json=soak-test-results.json \
+        load-test.js || \
+      echo 'Soak testing not configured (long duration)'
+    instance: 8
+    depends_on: ["Normal Load Test"]
+    timeout: 7500
+
+  # Stage 5: Specific Performance Tests
+  - name: "Database Performance Test"
+    prompt: |
+      DATABASE PERFORMANCE ANALYSIS:
+      1. Query execution times
+      2. Connection pool utilization
+      3. Slow query log analysis
+      4. Transaction rollback rate
+      5. Deadlock occurrences
+      6. Index usage statistics
+      7. Cache hit ratio
+      8. Replication lag (if applicable)
+    depends_on: ["Normal Load Test"]
+    timeout: 300
+
+  - name: "API Performance Test"
+    prompt: |
+      API PERFORMANCE METRICS:
+      1. Average response time per endpoint
+      2. P95 and P99 latency
+      3. Throughput per endpoint
+      4. Error rate per endpoint
+      5. Timeout occurrences
+      6. Concurrent request handling
+      7. Rate limiting effectiveness
+    depends_on: ["Normal Load Test"]
+    timeout: 300
+
+  - name: "Frontend Performance Test"
+    directory: "."
+    command: |
+      lighthouse http://localhost:3000 \
+        --output json \
+        --output-path lighthouse-perf.json || \
+      echo 'Lighthouse not available'
+    depends_on: ["Normal Load Test"]
+    timeout: 300
+
+  # Stage 6: Resource Monitoring
+  - name: "Resource Utilization Analysis"
+    prompt: |
+      RESOURCE UTILIZATION UNDER LOAD:
+
+      **CPU**:
+      1. Average CPU usage
+      2. Peak CPU usage
+      3. CPU throttling occurrences
+      4. Per-process CPU breakdown
+
+      **Memory**:
+      1. Average memory usage
+      2. Peak memory usage
+      3. Memory leaks detected
+      4. GC frequency and duration
+      5. Heap usage
+
+      **Network**:
+      1. Network throughput
+      2. Connection count
+      3. Connection errors
+      4. Bandwidth utilization
+
+      **Disk**:
+      1. Disk I/O rate
+      2. Disk queue length
+      3. Storage space usage
+      4. I/O wait time
+
+      **Application**:
+      1. Thread pool utilization
+      2. Connection pool usage
+      3. Queue depths
+      4. Cache performance
+    depends_on: ["Normal Load Test", "Peak Load Test"]
+    timeout: 300
+
+  # Stage 7: Bottleneck Identification
+  - name: "Bottleneck Analysis"
+    prompt: |
+      PERFORMANCE BOTTLENECK IDENTIFICATION:
+
+      1. **Slowest Operations**:
+         - Top 10 slowest endpoints
+         - Top 10 slowest queries
+         - Top 10 slowest operations
+
+      2. **Resource Bottlenecks**:
+         - CPU-bound operations
+         - Memory-bound operations
+         - I/O-bound operations
+         - Network-bound operations
+
+      3. **Scalability Issues**:
+         - Where does performance degrade?
+         - At what user count?
+         - Which resources saturate first?
+         - Amdahl's law limitations
+
+      4. **Code Hotspots**:
+         - Most CPU-intensive functions
+         - Most memory-intensive operations
+         - Blocking operations
+         - Synchronization issues
+    depends_on: ["Resource Utilization Analysis"]
+    timeout: 300
+
+  # Stage 8: Final Report
+  - name: "Generate Performance Report"
+    prompt: |
+      PERFORMANCE TESTING COMPREHENSIVE REPORT:
+
+      **Test Summary**:
+      - Test duration: [time]
+      - Total requests: [count]
+      - Successful requests: [count]
+      - Failed requests: [count]
+      - Error rate: [%]
+
+      **Load Test Results**:
+
+      **Light Load (10 users)**:
+      - Avg response time: [ms]
+      - P95 response time: [ms]
+      - P99 response time: [ms]
+      - Throughput: [req/s]
+      - Error rate: [%]
+
+      **Normal Load (50 users)**:
+      - Avg response time: [ms]
+      - P95 response time: [ms]
+      - P99 response time: [ms]
+      - Throughput: [req/s]
+      - Error rate: [%]
+
+      **Peak Load (200 users)**:
+      - Avg response time: [ms]
+      - P95 response time: [ms]
+      - P99 response time: [ms]
+      - Throughput: [req/s]
+      - Error rate: [%]
+
+      **Stress Test (500 users)**:
+      - System breaking point: [user count]
+      - Max throughput achieved: [req/s]
+      - First failure at: [user count]
+      - Recovery time: [seconds]
+
+      **Spike Test**:
+      - Response to sudden load: [good/poor]
+      - Auto-scaling triggered: [yes/no]
+      - Performance degradation: [%]
+
+      **Soak Test (2 hours)**:
+      - Memory leaks detected: [yes/no]
+      - Performance degradation over time: [%]
+      - Resource exhaustion: [none/cpu/memory/disk]
+
+      **Database Performance**:
+      - Avg query time: [ms]
+      - Slow queries: [count]
+      - Connection pool: [utilized %]
+      - Deadlocks: [count]
+
+      **API Performance**:
+      - Fastest endpoint: [endpoint] ([ms])
+      - Slowest endpoint: [endpoint] ([ms])
+      - Most called endpoint: [endpoint] ([count])
+
+      **Frontend Performance** (if applicable):
+      - Lighthouse score: [0-100]
+      - First Contentful Paint: [ms]
+      - Time to Interactive: [ms]
+      - Largest Contentful Paint: [ms]
+
+      **Resource Utilization**:
+      - Peak CPU: [%]
+      - Peak Memory: [MB]
+      - Peak Network: [Mbps]
+      - Peak Disk I/O: [MB/s]
+
+      **Bottlenecks Identified**:
+      1. [Primary bottleneck]
+      2. [Secondary bottleneck]
+      3. [Additional bottlenecks]
+
+      **Performance vs Baseline**:
+      - Response time: [+/- %]
+      - Throughput: [+/- %]
+      - Error rate: [+/- %]
+
+      **Acceptance Criteria**:
+      - Response time < 200ms: [PASS/FAIL]
+      - P95 < 500ms: [PASS/FAIL]
+      - P99 < 1000ms: [PASS/FAIL]
+      - Error rate < 0.1%: [PASS/FAIL]
+      - Throughput > 1000 req/s: [PASS/FAIL]
+
+      **Recommendations**:
+      1. [Critical performance improvements]
+      2. [Scaling recommendations]
+      3. [Code optimizations]
+      4. [Infrastructure improvements]
+      5. [Caching strategies]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Performance Grade**: [A-F]
+      **Scalability**: [Excellent/Good/Fair/Poor]
+    depends_on:
+      - "Performance Test Setup"
+      - "Collect Baseline Metrics"
+      - "Light Load Test"
+      - "Normal Load Test"
+      - "Peak Load Test"
+      - "Stress Test"
+      - "Spike Test"
+      - "Soak Test"
+      - "Database Performance Test"
+      - "API Performance Test"
+      - "Frontend Performance Test"
+      - "Resource Utilization Analysis"
+      - "Bottleneck Analysis"
+    priority: high
+
+# PERFORMANCE TESTING NOTES:
+# - Install k6 or Artillery for load testing
+# - Configure monitoring (Prometheus, Grafana, New Relic, etc.)
+# - Use realistic test data
+# - Test in production-like environment
+# - Monitor all system resources
+# - Set up alerts for anomalies
+# - Run tests during off-peak hours
+# - Compare results over time
+# - Test with production traffic patterns
+# - Consider geographic distribution
+# - Test auto-scaling behavior
+# - Document all findings and improvements

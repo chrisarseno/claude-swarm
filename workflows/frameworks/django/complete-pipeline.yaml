@@ -1,0 +1,286 @@
+# Django Complete Pipeline
+# Comprehensive validation for Django applications
+
+name: "Django Complete Pipeline"
+instances: 12
+
+tasks:
+  # Stage 1: Setup
+  - name: "Install Dependencies"
+    directory: "."
+    command: "pip install -r requirements.txt && pip install -r requirements-dev.txt"
+    instance: 1
+    timeout: 300
+
+  # Stage 2: Code Quality (parallel)
+  - name: "Black Formatting"
+    directory: "."
+    command: "black --check ."
+    instance: 2
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "isort Imports"
+    directory: "."
+    command: "isort --check-only ."
+    instance: 3
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "Flake8 Linting"
+    directory: "."
+    command: "flake8 ."
+    instance: 4
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "Pylint Django"
+    directory: "."
+    command: "pylint --load-plugins pylint_django --django-settings-module=project.settings **/*.py"
+    instance: 5
+    depends_on: ["Install Dependencies"]
+    timeout: 300
+
+  # Stage 3: Django-Specific Checks (parallel)
+  - name: "Django System Check"
+    directory: "."
+    command: "python manage.py check --deploy"
+    instance: 6
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "Migration Check"
+    directory: "."
+    command: "python manage.py makemigrations --check --dry-run"
+    instance: 7
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "Django Security Check"
+    prompt: |
+      DJANGO SECURITY ANALYSIS:
+      1. Check SECRET_KEY is not hardcoded
+      2. Verify DEBUG=False in production settings
+      3. Check ALLOWED_HOSTS configuration
+      4. Verify CSRF protection enabled
+      5. Check X-Frame-Options middleware
+      6. Verify Secure SSL settings
+      7. Check for SQL injection vulnerabilities
+      8. Verify password hashers configuration
+      9. Check session security settings
+      10. Review middleware order
+    instance: 8
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "ORM Query Analysis"
+    prompt: |
+      DJANGO ORM OPTIMIZATION CHECK:
+      1. Identify N+1 query issues
+      2. Check for missing select_related()
+      3. Check for missing prefetch_related()
+      4. Find queries without indexes
+      5. Identify slow querysets
+      6. Check for unnecessary database hits
+      7. Verify proper use of only()/defer()
+    instance: 9
+    depends_on: ["Install Dependencies"]
+    timeout: 300
+
+  # Stage 4: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: "pytest tests/unit/ -v --tb=short"
+    instance: 10
+    depends_on: ["Django System Check", "Migration Check"]
+    timeout: 600
+
+  - name: "Integration Tests"
+    directory: "."
+    command: "pytest tests/integration/ -v"
+    instance: 11
+    depends_on: ["Django System Check", "Migration Check"]
+    timeout: 900
+
+  - name: "Test Coverage"
+    directory: "."
+    command: "pytest --cov=. --cov-report=term-missing --cov-report=html"
+    instance: 12
+    depends_on: ["Django System Check"]
+    timeout: 600
+
+  # Stage 5: Database & Migrations
+  - name: "Migration Safety Check"
+    prompt: |
+      MIGRATION SAFETY ANALYSIS:
+      1. Check for destructive operations (DROP, TRUNCATE)
+      2. Verify data migrations have reverse
+      3. Check for missing indexes on foreign keys
+      4. Identify potentially slow migrations
+      5. Verify squashed migrations integrity
+      6. Check for circular dependencies
+      7. Verify RunPython operations are reversible
+    depends_on: ["Migration Check"]
+    timeout: 180
+
+  - name: "Test Migrations"
+    directory: "."
+    command: "python manage.py migrate && python manage.py migrate --plan"
+    depends_on: ["Migration Safety Check"]
+    timeout: 300
+
+  # Stage 6: Security Scanning
+  - name: "Bandit Security Scan"
+    directory: "."
+    command: "bandit -r . -f json -o bandit-report.json || true"
+    depends_on: ["Install Dependencies"]
+    timeout: 300
+
+  - name: "Safety Check"
+    directory: "."
+    command: "safety check --json || true"
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  # Stage 7: Performance & Static Files
+  - name: "Static Files Collection"
+    directory: "."
+    command: "python manage.py collectstatic --no-input --clear"
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "Template Validation"
+    directory: "."
+    command: "python manage.py validate_templates || true"
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  # Stage 8: API Testing (if DRF is used)
+  - name: "API Tests"
+    directory: "."
+    command: "pytest tests/api/ -v || true"
+    depends_on: ["Django System Check"]
+    timeout: 600
+
+  - name: "API Documentation"
+    prompt: |
+      DJANGO REST FRAMEWORK CHECK (if applicable):
+      1. All API endpoints documented
+      2. Proper serializer validation
+      3. Permission classes configured
+      4. Throttling configured
+      5. Authentication methods secured
+      6. Pagination configured
+      7. Filtering/Searching implemented
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 9: Final Report
+  - name: "Generate Django Pipeline Report"
+    prompt: |
+      DJANGO APPLICATION COMPREHENSIVE REPORT:
+
+      **Code Quality**:
+      - Black formatting: [status]
+      - isort imports: [status]
+      - Flake8 issues: [count]
+      - Pylint score: [score/10]
+
+      **Django Health**:
+      - System check: [warnings/errors]
+      - Migration status: [up-to-date/pending]
+      - Settings validation: [pass/fail]
+      - Deployment readiness: [ready/not ready]
+
+      **Security**:
+      - Django security check: [issues found]
+      - Bandit vulnerabilities: [count]
+      - Dependency vulnerabilities: [count]
+      - SECRET_KEY exposure: [safe/exposed]
+      - DEBUG mode: [appropriate/misconfigured]
+      - HTTPS settings: [configured/missing]
+      - CSRF protection: [enabled/disabled]
+
+      **Database**:
+      - Migration safety: [safe/risky operations]
+      - ORM optimization: [score]
+      - N+1 queries: [count]
+      - Missing indexes: [count]
+      - Query performance: [assessment]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - Integration tests: [passed/failed] ([X/Y])
+      - API tests: [passed/failed] ([X/Y])
+      - Coverage: [%]
+      - Missing tests: [areas]
+
+      **Performance**:
+      - Static files: [collected/errors]
+      - Template rendering: [validated/errors]
+      - Middleware performance: [assessment]
+      - Cache configuration: [optimal/needs improvement]
+      - Database connection pooling: [configured/missing]
+
+      **API (if DRF)**:
+      - Endpoints count: [count]
+      - Documentation: [complete/incomplete]
+      - Authentication: [configured/missing]
+      - Permissions: [properly configured/issues]
+      - Throttling: [configured/missing]
+
+      **Models & Admin**:
+      - Model count: [count]
+      - Admin registrations: [count]
+      - Custom managers: [count]
+      - Model validation: [pass/fail]
+
+      **Dependencies**:
+      - Django version: [version]
+      - Outdated packages: [count]
+      - Security advisories: [count]
+
+      **Best Practices**:
+      - Settings organization: [good/needs improvement]
+      - URL patterns: [good/needs improvement]
+      - View organization: [good/needs improvement]
+      - Form validation: [complete/incomplete]
+      - Error handling: [good/needs improvement]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Security Grade**: [A-F]
+      **Performance Grade**: [A-F]
+    depends_on:
+      - "Black Formatting"
+      - "isort Imports"
+      - "Flake8 Linting"
+      - "Pylint Django"
+      - "Django System Check"
+      - "Migration Check"
+      - "Django Security Check"
+      - "ORM Query Analysis"
+      - "Unit Tests"
+      - "Integration Tests"
+      - "Test Coverage"
+      - "Migration Safety Check"
+      - "Test Migrations"
+      - "Bandit Security Scan"
+      - "Safety Check"
+      - "Static Files Collection"
+      - "Template Validation"
+      - "API Tests"
+      - "API Documentation"
+    priority: high
+
+# DJANGO PIPELINE NOTES:
+# - Ensure database is configured (use SQLite for tests)
+# - Set DJANGO_SETTINGS_MODULE environment variable
+# - Use django-debug-toolbar for development profiling
+# - Consider django-silk for production monitoring
+# - Run with --keepdb flag for faster test iterations
+# - Use --parallel for faster test execution
+# - Consider django-coverage for better coverage reports

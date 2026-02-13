@@ -1,0 +1,126 @@
+# Python Complete Pipeline
+# Comprehensive validation for Python projects
+
+name: "Python Complete Pipeline"
+instances: 10
+
+tasks:
+  # Stage 1: Formatting
+  - name: "Black Formatting Check"
+    directory: "."
+    command: "black --check --diff ."
+    instance: 1
+    timeout: 120
+
+  - name: "isort Import Check"
+    directory: "."
+    command: "isort --check-only --diff ."
+    instance: 2
+    timeout: 120
+
+  # Stage 2: Linting (parallel)
+  - name: "Flake8 Linting"
+    directory: "."
+    command: "flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics"
+    instance: 3
+    depends_on: ["Black Formatting Check", "isort Import Check"]
+    timeout: 180
+
+  - name: "Pylint Analysis"
+    directory: "."
+    command: "pylint **/*.py --rcfile=.pylintrc || true"
+    instance: 4
+    depends_on: ["Black Formatting Check", "isort Import Check"]
+    timeout: 300
+
+  - name: "MyPy Type Checking"
+    directory: "."
+    command: "mypy . --ignore-missing-imports"
+    instance: 5
+    depends_on: ["Black Formatting Check", "isort Import Check"]
+    timeout: 180
+
+  # Stage 3: Security
+  - name: "Bandit Security Scan"
+    directory: "."
+    command: "bandit -r . -f json -o bandit-report.json || true"
+    instance: 6
+    depends_on: ["Black Formatting Check"]
+    timeout: 180
+
+  - name: "Safety Dependency Check"
+    directory: "."
+    command: "safety check --json || true"
+    instance: 7
+    depends_on: ["Black Formatting Check"]
+    timeout: 120
+
+  # Stage 4: Testing (parallel)
+  - name: "Pytest Unit Tests"
+    directory: "."
+    command: "pytest tests/unit/ -v --tb=short --maxfail=5"
+    instance: 8
+    depends_on: ["Flake8 Linting"]
+    timeout: 300
+
+  - name: "Pytest with Coverage"
+    directory: "."
+    command: "pytest --cov=. --cov-report=term-missing --cov-report=html"
+    instance: 9
+    depends_on: ["Flake8 Linting"]
+    timeout: 600
+
+  # Stage 5: Documentation
+  - name: "Documentation Check"
+    directory: "."
+    prompt: |
+      Check Python code documentation:
+      1. Verify all public functions have docstrings
+      2. Check docstring format (Google/NumPy/Sphinx)
+      3. Verify type hints are present
+      4. Check README.md exists and is up to date
+      5. Verify requirements.txt or pyproject.toml exists
+    instance: 10
+    depends_on: ["MyPy Type Checking"]
+    timeout: 180
+
+  # Stage 6: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      Generate comprehensive Python pipeline report:
+
+      **Formatting**:
+      - Black status
+      - isort status
+
+      **Code Quality**:
+      - Flake8 issues
+      - Pylint score
+      - MyPy type coverage
+
+      **Security**:
+      - Bandit findings
+      - Vulnerable dependencies
+
+      **Testing**:
+      - Test results
+      - Code coverage %
+      - Failed tests
+
+      **Documentation**:
+      - Documentation coverage
+      - Missing docstrings
+
+      **Final Verdict**: PASS/FAIL with recommendations
+    depends_on:
+      - "Black Formatting Check"
+      - "isort Import Check"
+      - "Flake8 Linting"
+      - "Pylint Analysis"
+      - "MyPy Type Checking"
+      - "Bandit Security Scan"
+      - "Safety Dependency Check"
+      - "Pytest Unit Tests"
+      - "Pytest with Coverage"
+      - "Documentation Check"
+    priority: high

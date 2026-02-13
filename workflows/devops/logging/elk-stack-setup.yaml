@@ -1,0 +1,680 @@
+# ELK Stack Setup (Elasticsearch, Logstash, Kibana)
+# Comprehensive logging infrastructure deployment
+
+name: "ELK Stack Setup"
+instances: 8
+priority: high
+
+tasks:
+  # Stage 1: Planning
+  - name: "Plan Logging Architecture"
+    prompt: |
+      LOGGING ARCHITECTURE PLANNING:
+
+      Analyze requirements and plan deployment:
+
+      **Log Sources**:
+      - Application logs: [count] services
+      - System logs: [count] servers
+      - Container logs: [yes/no]
+      - Kubernetes logs: [yes/no]
+      - Web server logs: [nginx/apache/etc.]
+      - Database logs: [types]
+
+      **Log Volume Estimation**:
+      - Expected daily volume: [GB/day]
+      - Peak logging rate: [events/second]
+      - Retention requirement: [days]
+      - Storage requirement: [TB]
+
+      **Architecture Recommendation**:
+      - Elasticsearch cluster size: [nodes]
+      - Logstash instances: [count]
+      - Kibana instances: [count]
+      - Filebeat agents: [deployed on all hosts]
+
+      **Resource Requirements**:
+      - Elasticsearch: [CPU/RAM per node]
+      - Logstash: [CPU/RAM]
+      - Kibana: [CPU/RAM]
+      - Total storage: [TB]
+
+      Deployment strategy: [single-node/cluster]
+    instance: 1
+    timeout: 300
+
+  # Stage 2: Install Elasticsearch
+  - name: "Install Elasticsearch"
+    directory: "."
+    command: |
+      echo "Installing Elasticsearch..."
+
+      if command -v kubectl &> /dev/null; then
+        # Kubernetes installation
+        helm repo add elastic https://helm.elastic.co
+        helm repo update
+
+        cat > elasticsearch-values.yaml << 'EOF'
+      replicas: 3
+      minimumMasterNodes: 2
+
+      resources:
+        requests:
+          cpu: "1000m"
+          memory: "2Gi"
+        limits:
+          cpu: "2000m"
+          memory: "4Gi"
+
+      volumeClaimTemplate:
+        resources:
+          requests:
+            storage: 100Gi
+
+      esJavaOpts: "-Xmx2g -Xms2g"
+
+      # Enable security
+      extraEnvs:
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: password
+      EOF
+
+        kubectl create secret generic elasticsearch-credentials \
+          --from-literal=password=$(openssl rand -base64 32) \
+          -n logging --dry-run=client -o yaml | kubectl apply -f -
+
+        helm install elasticsearch elastic/elasticsearch \
+          -f elasticsearch-values.yaml \
+          --namespace logging \
+          --create-namespace
+
+      elif command -v docker &> /dev/null; then
+        # Docker Compose installation
+        cat > docker-compose.elk.yml << 'EOF'
+      version: '3.8'
+      services:
+        elasticsearch:
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+          container_name: elasticsearch
+          environment:
+            - discovery.type=single-node
+            - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+            - xpack.security.enabled=false
+          ports:
+            - "9200:9200"
+          volumes:
+            - elasticsearch-data:/usr/share/elasticsearch/data
+          restart: unless-stopped
+
+      volumes:
+        elasticsearch-data:
+      EOF
+
+        docker-compose -f docker-compose.elk.yml up -d elasticsearch
+      fi
+
+      # Wait for Elasticsearch to be ready
+      echo "Waiting for Elasticsearch..."
+      for i in {1..60}; do
+        if curl -s http://localhost:9200 &>/dev/null; then
+          echo "Elasticsearch is ready"
+          break
+        fi
+        sleep 5
+      done
+
+      echo "Elasticsearch installation complete"
+    instance: 2
+    depends_on: ["Plan Logging Architecture"]
+    timeout: 900
+
+  - name: "Configure Elasticsearch"
+    directory: "."
+    command: |
+      echo "Configuring Elasticsearch..."
+
+      # Create index templates
+      curl -X PUT "localhost:9200/_index_template/logs" -H 'Content-Type: application/json' -d'
+      {
+        "index_patterns": ["logs-*"],
+        "template": {
+          "settings": {
+            "number_of_shards": 3,
+            "number_of_replicas": 1,
+            "index.lifecycle.name": "logs-policy",
+            "index.lifecycle.rollover_alias": "logs"
+          },
+          "mappings": {
+            "properties": {
+              "@timestamp": { "type": "date" },
+              "message": { "type": "text" },
+              "level": { "type": "keyword" },
+              "service": { "type": "keyword" },
+              "host": { "type": "keyword" }
+            }
+          }
+        }
+      }'
+
+      # Create ILM policy
+      curl -X PUT "localhost:9200/_ilm/policy/logs-policy" -H 'Content-Type: application/json' -d'
+      {
+        "policy": {
+          "phases": {
+            "hot": {
+              "actions": {
+                "rollover": {
+                  "max_size": "50GB",
+                  "max_age": "7d"
+                }
+              }
+            },
+            "warm": {
+              "min_age": "7d",
+              "actions": {
+                "shrink": {
+                  "number_of_shards": 1
+                }
+              }
+            },
+            "delete": {
+              "min_age": "30d",
+              "actions": {
+                "delete": {}
+              }
+            }
+          }
+        }
+      }'
+
+      echo "Elasticsearch configured"
+    instance: 3
+    depends_on: ["Install Elasticsearch"]
+    timeout: 180
+
+  # Stage 3: Install Logstash
+  - name: "Install Logstash"
+    directory: "."
+    command: |
+      echo "Installing Logstash..."
+
+      if command -v kubectl &> /dev/null; then
+        cat > logstash-values.yaml << 'EOF'
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "1000m"
+          memory: "2Gi"
+
+      logstashConfig:
+        logstash.yml: |
+          http.host: "0.0.0.0"
+          xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+
+      logstashPipeline:
+        logstash.conf: |
+          input {
+            beats {
+              port => 5044
+            }
+            tcp {
+              port => 5000
+              codec => json
+            }
+          }
+          filter {
+            if [type] == "syslog" {
+              grok {
+                match => { "message" => "%{SYSLOGLINE}" }
+              }
+              date {
+                match => [ "timestamp", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss" ]
+              }
+            }
+            if [type] == "application" {
+              json {
+                source => "message"
+              }
+            }
+          }
+          output {
+            elasticsearch {
+              hosts => ["http://elasticsearch:9200"]
+              index => "logs-%{+YYYY.MM.dd}"
+            }
+          }
+      EOF
+
+        helm install logstash elastic/logstash \
+          -f logstash-values.yaml \
+          --namespace logging
+
+      elif command -v docker &> /dev/null; then
+        cat >> docker-compose.elk.yml << 'EOF'
+        logstash:
+          image: docker.elastic.co/logstash/logstash:8.10.0
+          container_name: logstash
+          ports:
+            - "5000:5000"
+            - "5044:5044"
+          volumes:
+            - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+          environment:
+            - "LS_JAVA_OPTS=-Xmx1g -Xms1g"
+          depends_on:
+            - elasticsearch
+          restart: unless-stopped
+      EOF
+
+        mkdir -p logstash/pipeline
+        cat > logstash/pipeline/logstash.conf << 'EOF'
+      input {
+        beats {
+          port => 5044
+        }
+        tcp {
+          port => 5000
+          codec => json
+        }
+      }
+      filter {
+        json {
+          source => "message"
+        }
+      }
+      output {
+        elasticsearch {
+          hosts => ["elasticsearch:9200"]
+          index => "logs-%{+YYYY.MM.dd}"
+        }
+      }
+      EOF
+
+        docker-compose -f docker-compose.elk.yml up -d logstash
+      fi
+
+      echo "Logstash installation complete"
+    instance: 4
+    depends_on: ["Configure Elasticsearch"]
+    timeout: 600
+
+  # Stage 4: Install Kibana
+  - name: "Install Kibana"
+    directory: "."
+    command: |
+      echo "Installing Kibana..."
+
+      if command -v kubectl &> /dev/null; then
+        cat > kibana-values.yaml << 'EOF'
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "1000m"
+          memory: "2Gi"
+
+      service:
+        type: LoadBalancer
+
+      kibanaConfig:
+        kibana.yml: |
+          server.host: "0.0.0.0"
+          elasticsearch.hosts: ["http://elasticsearch:9200"]
+      EOF
+
+        helm install kibana elastic/kibana \
+          -f kibana-values.yaml \
+          --namespace logging
+
+      elif command -v docker &> /dev/null; then
+        cat >> docker-compose.elk.yml << 'EOF'
+        kibana:
+          image: docker.elastic.co/kibana/kibana:8.10.0
+          container_name: kibana
+          ports:
+            - "5601:5601"
+          environment:
+            - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+          depends_on:
+            - elasticsearch
+          restart: unless-stopped
+      EOF
+
+        docker-compose -f docker-compose.elk.yml up -d kibana
+      fi
+
+      # Wait for Kibana to be ready
+      echo "Waiting for Kibana..."
+      for i in {1..60}; do
+        if curl -s http://localhost:5601/api/status &>/dev/null; then
+          echo "Kibana is ready"
+          break
+        fi
+        sleep 5
+      done
+
+      echo "Kibana installation complete"
+    instance: 5
+    depends_on: ["Install Logstash"]
+    timeout: 600
+
+  - name: "Configure Kibana Dashboards"
+    directory: "."
+    command: |
+      echo "Configuring Kibana dashboards..."
+
+      # Wait for Kibana API
+      sleep 30
+
+      # Create index pattern
+      curl -X POST "localhost:5601/api/saved_objects/index-pattern/logs-*" \
+        -H 'kbn-xsrf: true' \
+        -H 'Content-Type: application/json' \
+        -d '{
+          "attributes": {
+            "title": "logs-*",
+            "timeFieldName": "@timestamp"
+          }
+        }'
+
+      # Set default index pattern
+      curl -X POST "localhost:5601/api/kibana/settings/defaultIndex" \
+        -H 'kbn-xsrf: true' \
+        -H 'Content-Type: application/json' \
+        -d '{"value":"logs-*"}'
+
+      echo "Kibana configured"
+    instance: 6
+    depends_on: ["Install Kibana"]
+    timeout: 180
+
+  # Stage 5: Install Filebeat
+  - name: "Install Filebeat Agents"
+    directory: "."
+    command: |
+      echo "Installing Filebeat..."
+
+      if command -v kubectl &> /dev/null; then
+        cat > filebeat-values.yaml << 'EOF'
+      daemonset:
+        enabled: true
+
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "100Mi"
+        limits:
+          cpu: "200m"
+          memory: "200Mi"
+
+      filebeatConfig:
+        filebeat.yml: |
+          filebeat.inputs:
+          - type: container
+            paths:
+              - /var/log/containers/*.log
+            processors:
+              - add_kubernetes_metadata:
+                  host: ${NODE_NAME}
+                  matchers:
+                  - logs_path:
+                      logs_path: "/var/log/containers/"
+
+          output.logstash:
+            hosts: ["logstash:5044"]
+      EOF
+
+        helm install filebeat elastic/filebeat \
+          -f filebeat-values.yaml \
+          --namespace logging
+
+      else
+        # Download and configure Filebeat for host
+        curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.10.0-linux-x86_64.tar.gz
+        tar xzvf filebeat-8.10.0-linux-x86_64.tar.gz
+
+        cat > filebeat-8.10.0-linux-x86_64/filebeat.yml << 'EOF'
+      filebeat.inputs:
+      - type: log
+        enabled: true
+        paths:
+          - /var/log/*.log
+          - /var/log/syslog
+
+      output.logstash:
+        hosts: ["localhost:5044"]
+      EOF
+
+        cd filebeat-8.10.0-linux-x86_64
+        sudo ./filebeat -e &
+      fi
+
+      echo "Filebeat installation complete"
+    instance: 7
+    depends_on: ["Install Logstash"]
+    timeout: 300
+
+  # Stage 6: Application Integration
+  - name: "Generate Application Integration Guide"
+    prompt: |
+      APPLICATION LOGGING INTEGRATION GUIDE:
+
+      Provide integration examples for applications:
+
+      **Python (using structlog)**:
+      ```python
+      import structlog
+      import logging.handlers
+
+      handler = logging.handlers.SysLogHandler(address=('localhost', 5000))
+      logging.basicConfig(handlers=[handler])
+
+      structlog.configure(
+          processors=[
+              structlog.stdlib.filter_by_level,
+              structlog.stdlib.add_logger_name,
+              structlog.stdlib.add_log_level,
+              structlog.stdlib.PositionalArgumentsFormatter(),
+              structlog.processors.TimeStamper(fmt="iso"),
+              structlog.processors.StackInfoRenderer(),
+              structlog.processors.format_exc_info,
+              structlog.processors.JSONRenderer()
+          ],
+          logger_factory=structlog.stdlib.LoggerFactory(),
+      )
+
+      log = structlog.get_logger()
+      log.info("application_started", service="myapp", environment="production")
+      ```
+
+      **Node.js (using winston)**:
+      ```javascript
+      const winston = require('winston');
+      require('winston-logstash');
+
+      const logger = winston.createLogger({
+        transports: [
+          new winston.transports.Logstash({
+            port: 5000,
+            host: 'localhost',
+            node_name: 'myapp',
+          })
+        ]
+      });
+
+      logger.info('Application started', { service: 'myapp', environment: 'production' });
+      ```
+
+      **Go (using logrus)**:
+      ```go
+      import (
+        "github.com/sirupsen/logrus"
+        "gopkg.in/sohlich/elogrus.v7"
+      )
+
+      log := logrus.New()
+      hook, err := elogrus.NewElasticHook("http://localhost:9200", "myapp", logrus.DebugLevel, "logs")
+      if err != nil {
+        log.Fatal(err)
+      }
+      log.Hooks.Add(hook)
+
+      log.WithFields(logrus.Fields{
+        "service": "myapp",
+        "environment": "production",
+      }).Info("Application started")
+      ```
+
+      **Docker Integration**:
+      ```yaml
+      version: '3.8'
+      services:
+        app:
+          logging:
+            driver: "json-file"
+            options:
+              labels: "service,environment"
+              tag: "{{.Name}}"
+      ```
+
+      Save integration examples to documentation.
+    instance: 8
+    depends_on: ["Configure Kibana Dashboards", "Install Filebeat Agents"]
+    timeout: 180
+
+  # Stage 7: Validation
+  - name: "Verify ELK Stack"
+    directory: "."
+    command: |
+      echo "Verifying ELK Stack..."
+
+      # Check Elasticsearch
+      curl -f http://localhost:9200/_cluster/health || echo "Elasticsearch not healthy"
+
+      # Check Logstash
+      curl -f http://localhost:9600/_node/stats || echo "Logstash not healthy"
+
+      # Check Kibana
+      curl -f http://localhost:5601/api/status || echo "Kibana not healthy"
+
+      # Send test log
+      echo '{"message":"Test log from verification","level":"info","service":"elk-setup"}' | nc localhost 5000
+
+      # Query logs
+      sleep 5
+      curl -s "http://localhost:9200/logs-*/_search?q=test" | jq '.hits.total.value'
+
+      echo "Verification complete"
+    instance: 1
+    depends_on: ["Generate Application Integration Guide"]
+    timeout: 180
+
+  # Stage 8: Final Report
+  - name: "Generate Setup Report"
+    prompt: |
+      ELK STACK SETUP COMPREHENSIVE REPORT:
+
+      **Installation Summary**:
+      - Elasticsearch: [installed/cluster size]
+      - Logstash: [installed]
+      - Kibana: [installed]
+      - Filebeat: [installed/deployed to X hosts]
+
+      **Elasticsearch Configuration**:
+      - Cluster health: [green/yellow/red]
+      - Nodes: [count]
+      - Indices: [count]
+      - Storage used: [GB]
+      - ILM policies: [configured]
+
+      **Logstash Configuration**:
+      - Input plugins: [beats, tcp]
+      - Output plugins: [elasticsearch]
+      - Pipelines: [configured]
+
+      **Kibana Access**:
+      - URL: http://localhost:5601
+      - Default credentials: [if applicable]
+      - Index patterns: [configured]
+      - Dashboards: [available]
+
+      **Log Collection**:
+      - Filebeat agents: [count]
+      - Log sources configured: [list]
+      - Expected daily volume: [GB/day]
+      - Retention period: [days]
+
+      **Next Steps**:
+      1. [ ] Change default passwords
+      2. [ ] Enable SSL/TLS
+      3. [ ] Configure authentication (LDAP/OAuth)
+      4. [ ] Set up alerting
+      5. [ ] Create custom dashboards
+      6. [ ] Configure log parsing rules
+      7. [ ] Set up log rotation
+      8. [ ] Test disaster recovery
+      9. [ ] Train team on Kibana
+      10. [ ] Document log formats
+
+      **Security Checklist**:
+      - [ ] Enable Elasticsearch security features
+      - [ ] Configure SSL certificates
+      - [ ] Set up user authentication
+      - [ ] Configure RBAC
+      - [ ] Enable audit logging
+      - [ ] Restrict network access
+
+      **Performance Tuning**:
+      - [ ] Optimize Elasticsearch JVM settings
+      - [ ] Configure index lifecycle management
+      - [ ] Set up shard allocation
+      - [ ] Configure caching
+      - [ ] Monitor resource usage
+
+      **Access Information**:
+      - Elasticsearch: http://localhost:9200
+      - Logstash: localhost:5000 (tcp), localhost:5044 (beats)
+      - Kibana: http://localhost:5601
+
+      **Documentation**:
+      - Application integration guide: [path]
+      - Filebeat configuration: [path]
+      - Custom parsing rules: [path]
+
+      **Monitoring**:
+      - Cluster monitoring: [enabled/disabled]
+      - Alerting: [configured/not configured]
+      - Backup strategy: [configured/not configured]
+
+      **Final Status**: SUCCESS / PARTIAL / FAILED
+      **Production Ready**: YES / NO
+      **Estimated Cost**: [$amount/month for infrastructure]
+    depends_on:
+      - "Plan Logging Architecture"
+      - "Install Elasticsearch"
+      - "Configure Elasticsearch"
+      - "Install Logstash"
+      - "Install Kibana"
+      - "Configure Kibana Dashboards"
+      - "Install Filebeat Agents"
+      - "Generate Application Integration Guide"
+      - "Verify ELK Stack"
+    priority: high
+
+# ELK STACK SETUP NOTES:
+# - Complete logging infrastructure
+# - Supports Kubernetes and Docker
+# - Application integration examples
+# - Index lifecycle management
+# - Scalable architecture
+# - Security considerations
+# - Production-ready configuration
+# - Extensible and customizable
+# - Suitable for microservices
+# - Centralized log management

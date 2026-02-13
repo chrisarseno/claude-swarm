@@ -1,0 +1,266 @@
+# Pull Request Comprehensive Validation
+# Run on every PR to ensure quality and safety
+
+name: "Pull Request Comprehensive Validation"
+instances: 12
+
+tasks:
+  # Stage 1: PR Metadata Analysis
+  - name: "PR Analysis"
+    prompt: |
+      PULL REQUEST METADATA ANALYSIS:
+      1. Check PR title follows conventions
+      2. Verify PR description is complete
+      3. Check if Jira/issue ticket is linked
+      4. Verify branch naming convention
+      5. Check PR size (lines changed)
+      6. Identify type: feature/bugfix/hotfix/refactor
+      7. Check if breaking changes are documented
+
+      Flag if:
+      - PR > 500 lines (suggest splitting)
+      - No description
+      - No linked issue
+      - Breaking changes without migration guide
+    priority: high
+    instance: 1
+    timeout: 120
+
+  # Stage 2: Code Changes Analysis (parallel)
+  - name: "Changed Files Analysis"
+    prompt: |
+      CHANGED FILES ANALYSIS:
+      1. List all modified files
+      2. Identify critical files (auth, payment, database)
+      3. Check for risky changes (migrations, configs)
+      4. Identify deleted files
+      5. Check for large file additions (>1MB)
+      6. Verify no test files in production code
+    instance: 2
+    timeout: 120
+
+  - name: "Security Impact Review"
+    prompt: |
+      SECURITY IMPACT ASSESSMENT:
+      1. Check authentication/authorization changes
+      2. Review data access modifications
+      3. Check for new external dependencies
+      4. Verify no secrets in code
+      5. Review permission changes
+      6. Check input validation
+      7. Review crypto/security library changes
+    priority: critical
+    instance: 3
+    timeout: 180
+
+  - name: "Performance Impact Review"
+    prompt: |
+      PERFORMANCE IMPACT ASSESSMENT:
+      1. Check for N+1 query patterns
+      2. Review loop complexities
+      3. Check for blocking operations
+      4. Review database query changes
+      5. Check for memory leaks
+      6. Review caching changes
+      7. Check for recursive calls
+    instance: 4
+    timeout: 180
+
+  # Stage 3: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: "npm test || pytest || go test ./... || cargo test"
+    instance: 5
+    timeout: 600
+
+  - name: "Integration Tests"
+    directory: "."
+    command: "npm run test:integration || pytest tests/integration || go test -tags=integration ./..."
+    instance: 6
+    timeout: 900
+
+  - name: "Test Coverage Check"
+    prompt: |
+      TEST COVERAGE ANALYSIS:
+      1. Calculate overall coverage %
+      2. Check coverage for changed files
+      3. Identify untested new code
+      4. Flag if coverage decreased
+      5. Check for missing edge cases
+      6. Verify error cases are tested
+
+      FAIL if:
+      - New code has < 80% coverage
+      - Overall coverage decreased > 2%
+    instance: 7
+    depends_on: ["Unit Tests"]
+    timeout: 180
+
+  # Stage 4: Code Quality (parallel)
+  - name: "Linting"
+    directory: "."
+    command: "eslint . || pylint . || golangci-lint run || cargo clippy"
+    instance: 8
+    timeout: 180
+
+  - name: "Type Checking"
+    directory: "."
+    command: "tsc --noEmit || mypy . || go vet ./..."
+    instance: 9
+    timeout: 180
+
+  - name: "Code Complexity Analysis"
+    prompt: |
+      CODE COMPLEXITY REVIEW:
+      1. Identify functions > 50 lines
+      2. Check cyclomatic complexity
+      3. Find deeply nested code (>4 levels)
+      4. Check for code duplication
+      5. Review class/module sizes
+      6. Identify "god objects"
+
+      Recommend refactoring if needed.
+    instance: 10
+    timeout: 180
+
+  # Stage 5: Documentation Check
+  - name: "Documentation Review"
+    prompt: |
+      DOCUMENTATION COMPLETENESS:
+      1. Check if README updated (if needed)
+      2. Verify API docs updated
+      3. Check inline comments for complex logic
+      4. Verify docstrings/JSDoc present
+      5. Check if CHANGELOG updated
+      6. Verify migration guides (if breaking)
+      7. Check for TODO/FIXME comments
+
+      Flag if documentation is missing or inadequate.
+    instance: 11
+    timeout: 180
+
+  # Stage 6: Build Verification
+  - name: "Build Check"
+    directory: "."
+    command: "npm run build || make build || go build ./... || cargo build"
+    instance: 12
+    depends_on: ["Linting", "Type Checking"]
+    timeout: 300
+
+  # Stage 7: Comprehensive Review
+  - name: "AI Code Review"
+    prompt: |
+      COMPREHENSIVE AI CODE REVIEW:
+
+      Review the PR for:
+
+      **Code Quality**:
+      - Readability and maintainability
+      - Adherence to project conventions
+      - DRY principle violations
+      - SOLID principles
+      - Design patterns usage
+
+      **Logic & Correctness**:
+      - Algorithmic correctness
+      - Edge case handling
+      - Error handling completeness
+      - Race conditions
+      - Off-by-one errors
+
+      **Best Practices**:
+      - Language-specific best practices
+      - Framework best practices
+      - Security best practices
+      - Performance best practices
+
+      **Potential Issues**:
+      - Bugs or logical errors
+      - Edge cases not handled
+      - Resource leaks
+      - Thread safety issues
+      - Null pointer issues
+
+      **Suggestions**:
+      - Alternative approaches
+      - Simplification opportunities
+      - Performance improvements
+      - Security hardening
+
+      Provide specific line-by-line feedback.
+    depends_on: ["Changed Files Analysis"]
+    priority: high
+    timeout: 600
+
+  # Stage 8: Final Report
+  - name: "Generate PR Verdict"
+    prompt: |
+      PULL REQUEST VALIDATION REPORT:
+
+      **PR Metadata**: ✓/✗
+      - Title: [assessment]
+      - Description: [assessment]
+      - Size: [lines] - [OK/TOO LARGE]
+      - Type: [feature/bugfix/etc]
+
+      **Testing**: ✓/✗
+      - Unit tests: [passed/failed]
+      - Integration tests: [passed/failed]
+      - Coverage: [%] - [PASS/FAIL]
+
+      **Code Quality**: ✓/✗
+      - Linting: [issues count]
+      - Type checking: [issues count]
+      - Complexity: [OK/NEEDS REFACTOR]
+
+      **Security**: ✓/✗
+      - Security review: [findings]
+      - Secrets check: [OK/FOUND SECRETS]
+      - Dependencies: [OK/VULNERABILITIES FOUND]
+
+      **Performance**: ✓/✗
+      - Impact assessment: [low/medium/high]
+      - Concerns: [list]
+
+      **Documentation**: ✓/✗
+      - Completeness: [assessment]
+      - Updates needed: [list]
+
+      **Build**: ✓/✗
+      - Build status: [success/failure]
+
+      **Critical Blockers**:
+      [List anything that MUST be fixed]
+
+      **Recommendations**:
+      [List suggested improvements]
+
+      **FINAL VERDICT**: APPROVE / REQUEST CHANGES / REJECT
+      **Confidence**: [High/Medium/Low]
+      **Reasoning**: [Explanation]
+
+      **Reviewer Notes**:
+      [Any additional context for human reviewers]
+    depends_on:
+      - "PR Analysis"
+      - "Changed Files Analysis"
+      - "Security Impact Review"
+      - "Performance Impact Review"
+      - "Unit Tests"
+      - "Integration Tests"
+      - "Test Coverage Check"
+      - "Linting"
+      - "Type Checking"
+      - "Code Complexity Analysis"
+      - "Documentation Review"
+      - "Build Check"
+      - "AI Code Review"
+    priority: critical
+
+# PR VALIDATION NOTES:
+# - Block merge if REJECT verdict
+# - Require approval if REQUEST CHANGES
+# - Auto-approve if APPROVE (based on project policy)
+# - Always require human review for critical files
+# - Consider PR size in review complexity
+# - Alert relevant team members based on changed files

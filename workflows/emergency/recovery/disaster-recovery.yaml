@@ -1,0 +1,469 @@
+# Disaster Recovery
+# Comprehensive disaster recovery procedure for system restoration
+
+name: "Disaster Recovery"
+instances: 10
+priority: critical
+
+tasks:
+  # Stage 1: Incident Assessment
+  - name: "Assess Disaster Situation"
+    prompt: |
+      DISASTER ASSESSMENT:
+
+      Immediately analyze the situation:
+
+      **Incident Type**:
+      - [ ] Database failure/corruption
+      - [ ] Complete system outage
+      - [ ] Data center failure
+      - [ ] Security breach/ransomware
+      - [ ] Accidental data deletion
+      - [ ] Infrastructure failure (AWS/cloud)
+      - [ ] Network partition
+      - [ ] Other: [specify]
+
+      **Impact Assessment**:
+      - Services affected: [list]
+      - Users impacted: [count/all]
+      - Data loss risk: [high/medium/low]
+      - Revenue impact: [$amount/hour]
+      - Time since incident: [minutes]
+
+      **Current Status**:
+      - Primary system: [up/degraded/down]
+      - Database: [accessible/corrupted/unavailable]
+      - Backups: [available/checking/unavailable]
+      - Failover systems: [available/deployed/unavailable]
+
+      **Immediate Actions Needed**:
+      1. [Priority 1 action]
+      2. [Priority 2 action]
+      3. [Priority 3 action]
+
+      Recovery Strategy: [restore from backup / rebuild / failover]
+      Estimated RTO: [hours]
+      Estimated RPO: [hours of data loss]
+    instance: 1
+    timeout: 300
+    priority: critical
+
+  # Stage 2: Communication
+  - name: "Initiate Incident Communication"
+    prompt: |
+      INCIDENT COMMUNICATION PLAN:
+
+      **Immediate Notifications**:
+      - [ ] Alert on-call team
+      - [ ] Notify management
+      - [ ] Update status page
+      - [ ] Alert customers (if needed)
+
+      **Status Page Update**:
+      Subject: System Outage - [Brief Description]
+      Status: Investigating / Identified / Monitoring / Resolved
+      Impact: [description]
+      Started: [timestamp]
+
+      **Internal Communication**:
+      - War room: [Slack channel / Zoom link]
+      - Incident commander: [name]
+      - Technical lead: [name]
+      - Communication lead: [name]
+
+      **Customer Communication** (if needed):
+      Template: "We are currently experiencing [issue]. Our team is working to restore service. We will provide updates every [interval]."
+
+      Communication channels activated: [list]
+    instance: 2
+    depends_on: ["Assess Disaster Situation"]
+    timeout: 180
+    priority: critical
+
+  # Stage 3: System Status Check (parallel)
+  - name: "Check Infrastructure Status"
+    directory: "."
+    command: |
+      echo "Checking infrastructure status..."
+
+      # Check cloud services
+      if command -v aws &> /dev/null; then
+        echo "=== AWS Health ==="
+        aws ec2 describe-instance-status --include-all-instances
+        aws rds describe-db-instances --query 'DBInstances[*].[DBInstanceIdentifier,DBInstanceStatus]'
+      fi
+
+      # Check Kubernetes
+      if command -v kubectl &> /dev/null; then
+        echo "=== Kubernetes Status ==="
+        kubectl get nodes
+        kubectl get pods --all-namespaces | grep -v Running
+        kubectl top nodes
+      fi
+
+      # Check Docker services
+      if command -v docker &> /dev/null; then
+        echo "=== Docker Status ==="
+        docker ps -a
+        docker stats --no-stream
+      fi
+
+      echo "Infrastructure check complete"
+    instance: 3
+    depends_on: ["Assess Disaster Situation"]
+    timeout: 180
+
+  - name: "Check Database Status"
+    directory: "."
+    command: |
+      echo "Checking database status..."
+
+      # PostgreSQL
+      if command -v psql &> /dev/null; then
+        psql -h localhost -c "SELECT version();" 2>&1 || echo "PostgreSQL unavailable"
+        psql -h localhost -c "SELECT pg_is_in_recovery();" 2>&1
+      fi
+
+      # MySQL
+      if command -v mysql &> /dev/null; then
+        mysql -e "SELECT VERSION();" 2>&1 || echo "MySQL unavailable"
+        mysql -e "SHOW MASTER STATUS;" 2>&1
+      fi
+
+      # MongoDB
+      if command -v mongosh &> /dev/null; then
+        mongosh --eval "db.serverStatus()" 2>&1 || echo "MongoDB unavailable"
+      fi
+
+      # Redis
+      if command -v redis-cli &> /dev/null; then
+        redis-cli ping 2>&1 || echo "Redis unavailable"
+        redis-cli info replication 2>&1
+      fi
+
+      echo "Database check complete"
+    instance: 4
+    depends_on: ["Assess Disaster Situation"]
+    timeout: 180
+
+  - name: "Verify Backup Availability"
+    directory: "."
+    command: |
+      echo "Verifying backup availability..."
+
+      # Check local backups
+      if [ -d "/backups" ]; then
+        echo "=== Local Backups ==="
+        ls -lth /backups/ | head -20
+      fi
+
+      # Check S3 backups
+      if command -v aws &> /dev/null; then
+        echo "=== S3 Backups ==="
+        aws s3 ls s3://backup-bucket/ --recursive --human-readable | tail -20
+      fi
+
+      # Check database backups
+      pg_basebackup --list 2>&1 || true
+
+      # Find most recent backup
+      echo "=== Most Recent Backup ==="
+      find /backups /var/backups -name "*.sql" -o -name "*.dump" -o -name "*.tar.gz" 2>/dev/null | sort -r | head -5
+
+      echo "Backup verification complete"
+    instance: 5
+    depends_on: ["Assess Disaster Situation"]
+    timeout: 300
+
+  # Stage 4: Recovery Decision
+  - name: "Determine Recovery Strategy"
+    prompt: |
+      RECOVERY STRATEGY DECISION:
+
+      Based on assessment, choose recovery strategy:
+
+      **Option 1: Restore from Backup**
+      - Latest backup age: [hours]
+      - Data loss: [hours]
+      - Recovery time: [estimated hours]
+      - Pros: [list]
+      - Cons: [list]
+
+      **Option 2: Failover to Secondary**
+      - Secondary system status: [ready/not ready]
+      - Switchover time: [minutes]
+      - Data loss: [minimal/none]
+      - Pros: [list]
+      - Cons: [list]
+
+      **Option 3: Rebuild from Scratch**
+      - Infrastructure as code available: [yes/no]
+      - Rebuild time: [estimated hours]
+      - Data recovery: [from backups/from replicas]
+      - Pros: [list]
+      - Cons: [list]
+
+      **Recommended Strategy**: [option]
+      **Reasoning**: [explanation]
+      **Risk Assessment**: [low/medium/high]
+      **Go/No-Go Decision**: [GO/WAIT/ABORT]
+    instance: 6
+    depends_on: ["Check Infrastructure Status", "Check Database Status", "Verify Backup Availability"]
+    timeout: 300
+    priority: critical
+
+  # Stage 5: Execute Recovery
+  - name: "Execute Database Recovery"
+    directory: "."
+    command: |
+      echo "Executing database recovery..."
+
+      # Find latest backup
+      LATEST_BACKUP=$(find /backups -name "*.sql" -o -name "*.dump" | sort -r | head -1)
+
+      if [ -z "$LATEST_BACKUP" ]; then
+        echo "ERROR: No backup found"
+        exit 1
+      fi
+
+      echo "Using backup: $LATEST_BACKUP"
+
+      # Stop application to prevent writes
+      docker-compose stop app || kubectl scale deployment/app --replicas=0
+
+      # Create new database
+      createdb production_restored || mysql -e "CREATE DATABASE production_restored"
+
+      # Restore backup
+      if [[ $LATEST_BACKUP == *.sql ]]; then
+        psql production_restored < $LATEST_BACKUP || mysql production_restored < $LATEST_BACKUP
+      elif [[ $LATEST_BACKUP == *.dump ]]; then
+        pg_restore -d production_restored $LATEST_BACKUP
+      fi
+
+      # Verify restoration
+      psql production_restored -c "SELECT COUNT(*) FROM users;" || mysql production_restored -e "SELECT COUNT(*) FROM users;"
+
+      echo "Database recovery complete"
+    instance: 7
+    depends_on: ["Determine Recovery Strategy"]
+    timeout: 3600
+
+  - name: "Restore Application Services"
+    directory: "."
+    command: |
+      echo "Restoring application services..."
+
+      if command -v kubectl &> /dev/null; then
+        # Kubernetes recovery
+        kubectl apply -f k8s/
+        kubectl rollout restart deployment/app
+        kubectl rollout status deployment/app --timeout=10m
+      elif command -v docker-compose &> /dev/null; then
+        # Docker recovery
+        docker-compose down
+        docker-compose up -d
+        docker-compose ps
+      else
+        # Generic service restart
+        systemctl restart application
+      fi
+
+      echo "Application services restored"
+    instance: 8
+    depends_on: ["Execute Database Recovery"]
+    timeout: 600
+
+  - name: "Verify System Recovery"
+    directory: "."
+    command: |
+      echo "Verifying system recovery..."
+
+      # Health checks
+      for i in {1..30}; do
+        if curl -f http://localhost:8080/health &>/dev/null; then
+          echo "Health check passed"
+          break
+        fi
+        echo "Waiting for system to be healthy... ($i/30)"
+        sleep 10
+      done
+
+      # Smoke tests
+      curl -f http://localhost:8080/api/status || echo "API check failed"
+
+      # Check database connectivity
+      psql -h localhost -c "SELECT 1;" || mysql -h localhost -e "SELECT 1;"
+
+      # Check critical services
+      curl -f http://localhost:8080/metrics || echo "Metrics unavailable"
+
+      echo "Verification complete"
+    instance: 9
+    depends_on: ["Restore Application Services"]
+    timeout: 600
+
+  # Stage 6: Validation
+  - name: "Validate Data Integrity"
+    prompt: |
+      DATA INTEGRITY VALIDATION:
+
+      Post-recovery checks:
+
+      **Database Integrity**:
+      - Row counts match expected: [yes/no]
+      - Foreign keys valid: [yes/no]
+      - Indexes intact: [yes/no]
+      - No corruption detected: [yes/no]
+
+      **Application Functionality**:
+      - Login working: [yes/no]
+      - Core features working: [yes/no]
+      - API endpoints responding: [yes/no]
+      - Background jobs running: [yes/no]
+
+      **Data Loss Assessment**:
+      - Data lost: [description]
+      - Transactions lost: [count]
+      - Time period affected: [timestamp range]
+      - Recovery actions needed: [list]
+
+      **System Performance**:
+      - Response times normal: [yes/no]
+      - Error rates normal: [yes/no]
+      - Resource usage normal: [yes/no]
+
+      Status: [FULLY RECOVERED / PARTIAL RECOVERY / RECOVERY FAILED]
+    instance: 10
+    depends_on: ["Verify System Recovery"]
+    timeout: 300
+    priority: critical
+
+  # Stage 7: Post-Recovery
+  - name: "Update Monitoring"
+    directory: "."
+    command: |
+      echo "Updating monitoring and alerting..."
+
+      # Re-enable monitoring
+      if command -v kubectl &> /dev/null; then
+        kubectl scale deployment/prometheus --replicas=1
+        kubectl scale deployment/grafana --replicas=1
+      fi
+
+      # Clear old alerts
+      curl -X POST http://localhost:9093/api/v1/alerts
+
+      # Verify monitoring
+      curl -f http://localhost:9090/-/healthy
+
+      echo "Monitoring updated"
+    instance: 2
+    depends_on: ["Validate Data Integrity"]
+    timeout: 180
+
+  - name: "Generate Recovery Report"
+    prompt: |
+      DISASTER RECOVERY COMPREHENSIVE REPORT:
+
+      **Incident Summary**:
+      - Incident type: [description]
+      - Started: [timestamp]
+      - Resolved: [timestamp]
+      - Total duration: [hours]
+
+      **Impact**:
+      - Services affected: [list]
+      - Users impacted: [count]
+      - Downtime: [minutes]
+      - Data loss: [description]
+      - Financial impact: [estimate]
+
+      **Root Cause**:
+      [Detailed explanation of what happened]
+
+      **Timeline**:
+      - [HH:MM] Incident detected
+      - [HH:MM] Team alerted
+      - [HH:MM] Recovery initiated
+      - [HH:MM] Database restored
+      - [HH:MM] Services restored
+      - [HH:MM] System validated
+      - [HH:MM] Incident resolved
+
+      **Recovery Actions Taken**:
+      1. [Action 1]
+      2. [Action 2]
+      3. [Action 3]
+
+      **Recovery Metrics**:
+      - RTO (Recovery Time Objective): [target] vs [actual]
+      - RPO (Recovery Point Objective): [target] vs [actual]
+      - Backup age used: [hours]
+      - Recovery success rate: [%]
+
+      **What Worked Well**:
+      - [Positive aspects]
+
+      **What Didn't Work**:
+      - [Issues encountered]
+
+      **Data Loss Details**:
+      - Transactions lost: [count]
+      - Time period: [range]
+      - Recovery possible: [yes/no/partial]
+
+      **Post-Recovery Status**:
+      - System health: [healthy/degraded]
+      - Data integrity: [intact/compromised]
+      - Performance: [normal/degraded]
+      - Monitoring: [restored/not restored]
+
+      **Immediate Actions Required**:
+      1. [Action 1]
+      2. [Action 2]
+
+      **Preventive Measures**:
+      1. [Prevention 1]
+      2. [Prevention 2]
+      3. [Prevention 3]
+
+      **Recommendations**:
+      - Backup strategy: [improvements needed]
+      - Monitoring: [enhancements needed]
+      - Runbooks: [updates needed]
+      - Training: [areas to improve]
+
+      **Lessons Learned**:
+      [Key takeaways from this incident]
+
+      **Follow-up Actions**:
+      - [ ] Post-mortem meeting scheduled
+      - [ ] Incident documentation complete
+      - [ ] Process improvements identified
+      - [ ] Team debriefing completed
+      - [ ] Customer communication sent
+      - [ ] Backup strategy reviewed
+
+      **Final Status**: [RECOVERED / PARTIALLY RECOVERED / RECOVERY ONGOING]
+    depends_on:
+      - "Assess Disaster Situation"
+      - "Check Infrastructure Status"
+      - "Check Database Status"
+      - "Execute Database Recovery"
+      - "Restore Application Services"
+      - "Validate Data Integrity"
+      - "Update Monitoring"
+    priority: critical
+
+# DISASTER RECOVERY NOTES:
+# - Use only in emergency situations
+# - Follow established runbooks
+# - Communicate constantly with stakeholders
+# - Document everything
+# - Validate thoroughly before declaring recovered
+# - Conduct post-mortem after resolution
+# - Update recovery procedures based on learnings
+# - Test disaster recovery regularly
+# - Maintain updated backup strategy
+# - Ensure team is trained on procedures

@@ -1,0 +1,52 @@
+# Example: Multi-Project Build and Test Workflow
+
+name: "Multi-Project Build and Test"
+
+# Number of instances to use
+instances: 3
+
+# Tasks to execute
+tasks:
+  - name: "Install Frontend Dependencies"
+    directory: "./frontend"
+    command: "npm install"
+    instance: 1
+
+  - name: "Install Backend Dependencies"
+    directory: "./backend"
+    command: "pip install -r requirements.txt"
+    instance: 2
+
+  - name: "Run Linter"
+    directory: "."
+    command: "ruff check ."
+    instance: 3
+
+  - name: "Build Frontend"
+    directory: "./frontend"
+    command: "npm run build"
+    instance: 1
+    depends_on:
+      - "Install Frontend Dependencies"
+
+  - name: "Run Backend Tests"
+    directory: "./backend"
+    command: "pytest tests/ -v"
+    instance: 2
+    depends_on:
+      - "Install Backend Dependencies"
+
+  - name: "Run Frontend Tests"
+    directory: "./frontend"
+    command: "npm test"
+    instance: 1
+    depends_on:
+      - "Build Frontend"
+
+  - name: "Generate Documentation"
+    directory: "./docs"
+    command: "mkdocs build"
+    instance: 3
+    depends_on:
+      - "Build Frontend"
+      - "Run Backend Tests"

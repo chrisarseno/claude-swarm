@@ -1,0 +1,167 @@
+# Go Complete Pipeline
+# Comprehensive validation for Go projects
+
+name: "Go Complete Pipeline"
+instances: 10
+
+tasks:
+  # Stage 1: Setup & Dependencies
+  - name: "Download Dependencies"
+    directory: "."
+    command: "go mod download && go mod verify"
+    instance: 1
+    timeout: 180
+
+  # Stage 2: Formatting & Generate
+  - name: "Go Format Check"
+    directory: "."
+    command: "test -z $(gofmt -l .)"
+    instance: 2
+    depends_on: ["Download Dependencies"]
+    timeout: 60
+
+  - name: "Go Generate"
+    directory: "."
+    command: "go generate ./..."
+    instance: 3
+    depends_on: ["Download Dependencies"]
+    timeout: 180
+
+  # Stage 3: Linting (parallel)
+  - name: "Go Vet"
+    directory: "."
+    command: "go vet ./..."
+    instance: 4
+    depends_on: ["Go Format Check", "Go Generate"]
+    timeout: 120
+
+  - name: "Staticcheck"
+    directory: "."
+    command: "staticcheck ./..."
+    instance: 5
+    depends_on: ["Go Format Check", "Go Generate"]
+    timeout: 180
+
+  - name: "Golangci-lint"
+    directory: "."
+    command: "golangci-lint run --timeout=5m"
+    instance: 6
+    depends_on: ["Go Format Check", "Go Generate"]
+    timeout: 300
+
+  - name: "Go Security Check"
+    directory: "."
+    command: "gosec -fmt=json -out=gosec-report.json ./... || true"
+    instance: 7
+    depends_on: ["Download Dependencies"]
+    timeout: 180
+
+  # Stage 4: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: "go test -v -race -coverprofile=coverage.out -covermode=atomic ./..."
+    instance: 8
+    depends_on: ["Go Vet", "Staticcheck"]
+    timeout: 600
+
+  - name: "Benchmark Tests"
+    directory: "."
+    command: "go test -bench=. -benchmem ./... | tee benchmark-results.txt"
+    instance: 9
+    depends_on: ["Go Vet", "Staticcheck"]
+    timeout: 600
+
+  # Stage 5: Build
+  - name: "Build Binary"
+    directory: "."
+    command: "go build -v -o bin/app ./..."
+    instance: 10
+    depends_on: ["Unit Tests"]
+    timeout: 300
+
+  # Stage 6: Advanced Checks
+  - name: "Race Detection"
+    directory: "."
+    command: "go test -race -short ./..."
+    depends_on: ["Unit Tests"]
+    timeout: 600
+
+  - name: "Memory Analysis"
+    prompt: |
+      MEMORY ANALYSIS:
+      1. Check for memory leaks in tests
+      2. Analyze goroutine usage
+      3. Check for defer in loops
+      4. Verify proper resource cleanup
+      5. Check for unbounded channels
+      6. Analyze struct sizes and alignment
+    depends_on: ["Unit Tests"]
+    timeout: 180
+
+  - name: "Dependency Analysis"
+    directory: "."
+    command: "go list -m all && go mod why -m all"
+    depends_on: ["Download Dependencies"]
+    timeout: 120
+
+  # Stage 7: Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      GO PIPELINE COMPREHENSIVE REPORT:
+
+      **Code Quality**:
+      - gofmt status
+      - go vet findings
+      - staticcheck issues
+      - golangci-lint results
+
+      **Security**:
+      - gosec vulnerabilities
+      - Dependency security issues
+      - Known CVEs
+
+      **Testing**:
+      - Test pass/fail count
+      - Code coverage %
+      - Race conditions detected
+      - Failed tests with details
+
+      **Performance**:
+      - Benchmark results
+      - Memory usage
+      - Goroutine patterns
+      - Performance regressions
+
+      **Build**:
+      - Build success/failure
+      - Binary size
+      - Build warnings
+      - Compilation time
+
+      **Dependencies**:
+      - Direct dependencies
+      - Indirect dependencies
+      - Outdated dependencies
+      - Unused dependencies
+
+      **Best Practices**:
+      - Error handling patterns
+      - Context usage
+      - Interface design
+      - Concurrency patterns
+
+      **Final Verdict**: PASS/FAIL
+      **Recommendations**: [List specific improvements]
+    depends_on:
+      - "Go Format Check"
+      - "Go Vet"
+      - "Staticcheck"
+      - "Golangci-lint"
+      - "Go Security Check"
+      - "Unit Tests"
+      - "Benchmark Tests"
+      - "Build Binary"
+      - "Race Detection"
+      - "Memory Analysis"
+      - "Dependency Analysis"
+    priority: high

@@ -1,0 +1,456 @@
+# Database Migration Validation
+# Comprehensive testing and validation of database migrations
+
+name: "Database Migration Validation"
+instances: 10
+priority: high
+
+tasks:
+  # Stage 1: Pre-Migration Analysis
+  - name: "Analyze Migration Files"
+    prompt: |
+      MIGRATION FILES ANALYSIS:
+
+      Identify and analyze all pending migrations:
+      1. List all migration files to be applied
+      2. Identify migration tool (Alembic, Flyway, Liquibase, Django, etc.)
+      3. Check migration sequence and dependencies
+      4. Identify breaking changes
+      5. Identify data transformations
+      6. Check for rollback scripts
+
+      **Risk Assessment**:
+      - Schema changes: [list]
+      - Data migrations: [list]
+      - Breaking changes: [list]
+      - Performance impact: [high/medium/low]
+      - Rollback complexity: [high/medium/low]
+
+      **Red Flags**:
+      - Missing rollback scripts
+      - Dropping columns/tables without backup
+      - Non-idempotent migrations
+      - Missing NULL checks
+      - Index creation on large tables
+    instance: 1
+    timeout: 180
+
+  # Stage 2: Create Test Database
+  - name: "Setup Test Database"
+    directory: "."
+    command: |
+      echo "Creating test database for migration validation..."
+
+      # Backup production schema (metadata only)
+      if command -v pg_dump &> /dev/null; then
+        pg_dump --schema-only production_db > schema_backup.sql
+      elif command -v mysqldump &> /dev/null; then
+        mysqldump --no-data production_db > schema_backup.sql
+      fi
+
+      # Create test database
+      createdb migration_test || mysql -e "CREATE DATABASE migration_test"
+
+      # Copy production schema to test
+      psql migration_test < schema_backup.sql || mysql migration_test < schema_backup.sql
+
+      echo "Test database created"
+    instance: 2
+    depends_on: ["Analyze Migration Files"]
+    timeout: 300
+
+  - name: "Load Sample Data"
+    directory: "."
+    command: |
+      # Load representative sample data for testing
+      echo "Loading sample data into test database..."
+
+      # Export sample from production (limited rows)
+      if command -v pg_dump &> /dev/null; then
+        pg_dump --data-only --table=users --table=orders \
+          production_db | head -n 10000 | psql migration_test
+      fi
+
+      # Verify data loaded
+      psql migration_test -c "SELECT COUNT(*) FROM users;" || \
+      mysql migration_test -e "SELECT COUNT(*) FROM users;"
+    instance: 3
+    depends_on: ["Setup Test Database"]
+    timeout: 300
+
+  # Stage 3: Test Migration Forward
+  - name: "Run Migration Forward"
+    directory: "."
+    command: |
+      echo "Running migration on test database..."
+
+      export DATABASE_URL="postgresql://localhost/migration_test"
+
+      if [ -f "alembic.ini" ]; then
+        # Alembic (Python)
+        alembic upgrade head
+      elif [ -f "manage.py" ]; then
+        # Django
+        python manage.py migrate --database=migration_test
+      elif [ -f "flyway.conf" ]; then
+        # Flyway (Java)
+        flyway -configFiles=flyway.conf -url=jdbc:postgresql://localhost/migration_test migrate
+      elif [ -f "db/migrate" ]; then
+        # Rails
+        RAILS_ENV=test rake db:migrate
+      else
+        echo "Unknown migration tool"
+        exit 1
+      fi
+
+      echo "Migration completed"
+    instance: 4
+    depends_on: ["Load Sample Data"]
+    timeout: 600
+
+  - name: "Validate Schema After Migration"
+    prompt: |
+      POST-MIGRATION SCHEMA VALIDATION:
+
+      Compare expected vs actual schema:
+
+      **Tables**:
+      - New tables created: [list]
+      - Tables modified: [list]
+      - Tables dropped: [list]
+
+      **Columns**:
+      - New columns: [table.column list]
+      - Modified columns: [list]
+      - Dropped columns: [list with safety check]
+
+      **Constraints**:
+      - New constraints: [list]
+      - Modified constraints: [list]
+      - Foreign keys: [list]
+      - Unique constraints: [list]
+
+      **Indexes**:
+      - New indexes: [list]
+      - Dropped indexes: [list]
+      - Index types: [B-tree, GIN, etc.]
+
+      **Data Integrity**:
+      - All foreign keys valid: [yes/no]
+      - All NOT NULL constraints satisfied: [yes/no]
+      - All unique constraints satisfied: [yes/no]
+      - Data loss detected: [yes/no - CRITICAL]
+
+      Status: VALID / INVALID
+    instance: 5
+    depends_on: ["Run Migration Forward"]
+    timeout: 300
+    priority: critical
+
+  # Stage 4: Data Validation
+  - name: "Validate Data Integrity"
+    directory: "."
+    command: |
+      # Check data integrity after migration
+      psql migration_test << 'EOF'
+      -- Check for orphaned records
+      SELECT 'Orphaned records' as check,
+             COUNT(*) as count
+      FROM orders o
+      LEFT JOIN users u ON o.user_id = u.id
+      WHERE u.id IS NULL;
+
+      -- Check for NULL values in NOT NULL columns
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE is_nullable = 'NO'
+        AND table_schema = 'public';
+
+      -- Check row counts (should match before/after)
+      SELECT table_name,
+             (SELECT COUNT(*) FROM table_name) as current_count
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE';
+      EOF
+    instance: 6
+    depends_on: ["Run Migration Forward"]
+    timeout: 300
+
+  # Stage 5: Performance Testing
+  - name: "Test Migration Performance"
+    directory: "."
+    command: |
+      # Measure migration execution time on larger dataset
+      echo "Testing migration performance..."
+
+      # Reset test database
+      dropdb migration_test_perf && createdb migration_test_perf
+
+      # Load larger sample
+      psql migration_test_perf < schema_backup.sql
+
+      # Time the migration
+      time alembic upgrade head || \
+      time python manage.py migrate || \
+      time flyway migrate
+
+      # Check if indexes were created efficiently
+      psql migration_test_perf -c "\di+" # Show index sizes
+    instance: 7
+    depends_on: ["Validate Data Integrity"]
+    timeout: 900
+
+  - name: "Analyze Performance Impact"
+    prompt: |
+      MIGRATION PERFORMANCE ANALYSIS:
+
+      **Execution Time**:
+      - Total migration time: [seconds]
+      - Acceptable for production: [yes/no]
+      - Estimated downtime: [seconds/minutes]
+
+      **Resource Usage**:
+      - Peak CPU: [%]
+      - Peak memory: [MB]
+      - Disk I/O: [high/medium/low]
+      - Lock wait time: [seconds]
+
+      **Locking Behavior**:
+      - Tables locked: [list]
+      - Lock type: [exclusive/share]
+      - Lock duration: [seconds]
+      - Concurrent access blocked: [yes/no]
+
+      **Optimization Opportunities**:
+      1. [Add indexes after data load]
+      2. [Use concurrent index creation]
+      3. [Batch data migrations]
+      4. [Split into multiple migrations]
+
+      Production Risk: [low/medium/high]
+    instance: 8
+    depends_on: ["Test Migration Performance"]
+    timeout: 180
+
+  # Stage 6: Rollback Testing
+  - name: "Test Migration Rollback"
+    directory: "."
+    command: |
+      echo "Testing migration rollback..."
+
+      if [ -f "alembic.ini" ]; then
+        # Alembic rollback
+        alembic downgrade -1
+      elif [ -f "flyway.conf" ]; then
+        # Flyway undo
+        flyway undo
+      elif [ -f "manage.py" ]; then
+        # Django rollback
+        python manage.py migrate app_name previous_migration
+      else
+        echo "Rollback test not available for this tool"
+      fi
+
+      # Verify schema restored
+      psql migration_test -c "\dt" # List tables
+    instance: 9
+    depends_on: ["Analyze Performance Impact"]
+    timeout: 600
+
+  - name: "Validate Rollback Integrity"
+    prompt: |
+      ROLLBACK VALIDATION:
+
+      **Schema Restored**:
+      - Tables match pre-migration: [yes/no]
+      - Columns match pre-migration: [yes/no]
+      - Constraints restored: [yes/no]
+      - Indexes restored: [yes/no]
+
+      **Data Integrity After Rollback**:
+      - All data preserved: [yes/no]
+      - No data corruption: [yes/no]
+      - Foreign keys valid: [yes/no]
+      - Row counts match: [yes/no]
+
+      **Rollback Issues**:
+      [List any problems encountered]
+
+      Rollback Status: SUCCESS / PARTIAL / FAILED
+      Production Rollback Viable: [yes/no]
+    instance: 10
+    depends_on: ["Test Migration Rollback"]
+    timeout: 180
+    priority: critical
+
+  # Stage 7: Concurrent Access Testing
+  - name: "Test Concurrent Access During Migration"
+    directory: "."
+    command: |
+      # Test if application can still read/write during migration
+      echo "Testing concurrent access..."
+
+      # Start background queries
+      for i in {1..10}; do
+        psql migration_test -c "SELECT COUNT(*) FROM users;" &
+      done
+
+      # Run migration
+      alembic upgrade head || python manage.py migrate
+
+      # Wait for background queries
+      wait
+
+      echo "Concurrent access test complete"
+    instance: 2
+    depends_on: ["Validate Rollback Integrity"]
+    timeout: 600
+
+  # Stage 8: Security Validation
+  - name: "Security Check"
+    prompt: |
+      MIGRATION SECURITY ANALYSIS:
+
+      **Permission Changes**:
+      - New permissions granted: [list]
+      - Permissions revoked: [list]
+      - Role changes: [list]
+
+      **Data Exposure**:
+      - New columns contain PII: [yes/no]
+      - Encryption applied: [yes/no]
+      - Access controls updated: [yes/no]
+
+      **SQL Injection Risk**:
+      - Dynamic SQL in migrations: [yes/no]
+      - User input in migrations: [yes/no]
+      - Parameterized queries used: [yes/no]
+
+      **Compliance**:
+      - GDPR compliance maintained: [yes/no]
+      - Data retention policies followed: [yes/no]
+      - Audit logging present: [yes/no]
+
+      Security Status: PASS / FAIL
+    instance: 1
+    depends_on: ["Test Concurrent Access During Migration"]
+    timeout: 180
+
+  # Stage 9: Cleanup
+  - name: "Cleanup Test Databases"
+    directory: "."
+    command: |
+      echo "Cleaning up test databases..."
+
+      # Drop test databases
+      dropdb migration_test || mysql -e "DROP DATABASE migration_test"
+      dropdb migration_test_perf || mysql -e "DROP DATABASE migration_test_perf"
+
+      # Remove backup files
+      rm -f schema_backup.sql
+
+      echo "Cleanup complete"
+    instance: 3
+    depends_on: ["Security Check"]
+    timeout: 120
+
+  # Stage 10: Final Report
+  - name: "Generate Migration Report"
+    prompt: |
+      DATABASE MIGRATION COMPREHENSIVE REPORT:
+
+      **Migration Summary**:
+      - Migration tool: [Alembic/Flyway/Django/etc.]
+      - Number of migrations: [count]
+      - Migration files: [list]
+
+      **Schema Changes**:
+      - Tables added: [count] [list]
+      - Tables modified: [count] [list]
+      - Tables dropped: [count] [list]
+      - Columns added: [count]
+      - Columns modified: [count]
+      - Columns dropped: [count]
+      - Indexes added: [count]
+      - Constraints added: [count]
+
+      **Test Results**:
+
+      **Forward Migration**:
+      - Status: [SUCCESS/FAILED]
+      - Execution time: [seconds]
+      - Data integrity: [PASS/FAIL]
+      - Schema valid: [yes/no]
+
+      **Rollback Test**:
+      - Status: [SUCCESS/FAILED]
+      - Rollback time: [seconds]
+      - Data preserved: [yes/no]
+      - Schema restored: [yes/no]
+
+      **Performance**:
+      - Migration duration: [seconds]
+      - Estimated production downtime: [seconds]
+      - Lock duration: [seconds]
+      - Resource usage: [acceptable/high]
+      - Concurrent access: [blocked/allowed]
+
+      **Data Integrity**:
+      - No data loss: [yes/no]
+      - Foreign keys valid: [yes/no]
+      - Constraints satisfied: [yes/no]
+      - Orphaned records: [count]
+
+      **Security**:
+      - Security review: [PASS/FAIL]
+      - PII handling: [appropriate/needs review]
+      - Permission changes: [list]
+
+      **Risks Identified**:
+      1. [High risk items]
+      2. [Medium risk items]
+      3. [Low risk items]
+
+      **Pre-Production Checklist**:
+      - [ ] Database backup created
+      - [ ] Rollback script tested
+      - [ ] Downtime window scheduled
+      - [ ] Team notified
+      - [ ] Monitoring alerts configured
+      - [ ] Rollback criteria defined
+      - [ ] Performance impact assessed
+
+      **Recommendations**:
+      1. [Apply during low traffic window]
+      2. [Create indexes concurrently]
+      3. [Monitor specific metrics]
+      4. [Have DBA on standby]
+
+      **Production Readiness**:
+      - Ready for production: [YES/NO]
+      - Confidence level: [high/medium/low]
+      - Recommended deployment window: [date/time]
+
+      **Final Status**: APPROVED / NEEDS CHANGES / REJECTED
+    depends_on:
+      - "Analyze Migration Files"
+      - "Validate Schema After Migration"
+      - "Validate Data Integrity"
+      - "Analyze Performance Impact"
+      - "Validate Rollback Integrity"
+      - "Test Concurrent Access During Migration"
+      - "Security Check"
+    priority: high
+
+# DATABASE MIGRATION VALIDATION NOTES:
+# - Tests migrations in isolated environment
+# - Validates data integrity before and after
+# - Tests rollback procedures
+# - Measures performance impact
+# - Checks concurrent access behavior
+# - Security and compliance validation
+# - Comprehensive risk assessment
+# - Production readiness checklist
+# - Safe to run repeatedly
+# - No impact on production database

@@ -1,0 +1,530 @@
+# Comprehensive Code Review
+# Deep analysis of code changes for quality, security, and best practices
+
+name: "Comprehensive Code Review"
+instances: 12
+priority: normal
+
+tasks:
+  # Stage 1: Change Analysis
+  - name: "Analyze Changed Files"
+    directory: "."
+    command: |
+      # Get list of changed files
+      if [ -d ".git" ]; then
+        git diff --name-only HEAD~1 HEAD > changed_files.txt
+        git diff --stat HEAD~1 HEAD
+        git diff HEAD~1 HEAD > full_diff.txt
+      else
+        echo "Not a git repository"
+        exit 1
+      fi
+
+      echo "Changed files:"
+      cat changed_files.txt
+    instance: 1
+    timeout: 60
+
+  - name: "Categorize Changes"
+    prompt: |
+      CODE CHANGE CATEGORIZATION:
+
+      Analyze the changed files and categorize:
+
+      **By Type**:
+      - New features: [files]
+      - Bug fixes: [files]
+      - Refactoring: [files]
+      - Tests: [files]
+      - Documentation: [files]
+      - Configuration: [files]
+
+      **By Language**:
+      - Python: [count] files
+      - JavaScript/TypeScript: [count] files
+      - Go: [count] files
+      - Other: [list]
+
+      **By Complexity**:
+      - Simple changes (< 50 lines): [count]
+      - Medium changes (50-200 lines): [count]
+      - Large changes (> 200 lines): [count]
+
+      **Review Priority**:
+      - Critical (security, core logic): [files]
+      - High (features, APIs): [files]
+      - Medium (refactoring, tests): [files]
+      - Low (docs, formatting): [files]
+
+      Provide review strategy based on changes.
+    instance: 2
+    depends_on: ["Analyze Changed Files"]
+    timeout: 180
+
+  # Stage 2: Code Quality Review (parallel by category)
+  - name: "Review Code Style"
+    prompt: |
+      CODE STYLE REVIEW:
+
+      Check code style and formatting:
+
+      **Consistency**:
+      - Naming conventions followed: [yes/no]
+      - Indentation consistent: [yes/no]
+      - Import statements organized: [yes/no]
+      - Line length appropriate: [yes/no]
+
+      **Readability**:
+      - Function/method names descriptive: [yes/no]
+      - Variable names meaningful: [yes/no]
+      - Comments where needed: [yes/no]
+      - Code self-documenting: [yes/no]
+
+      **Complexity**:
+      - Functions too long (> 50 lines): [list]
+      - Deep nesting (> 3 levels): [list]
+      - High cyclomatic complexity: [list]
+      - Duplicate code blocks: [list]
+
+      **Formatting Issues**:
+      [List specific style violations]
+
+      Recommendations:
+      1. [Specific improvements]
+      2. [Refactoring suggestions]
+    instance: 3
+    depends_on: ["Categorize Changes"]
+    timeout: 300
+
+  - name: "Review Logic and Correctness"
+    prompt: |
+      LOGIC AND CORRECTNESS REVIEW:
+
+      Analyze code logic for correctness:
+
+      **Algorithmic Correctness**:
+      - Logic sound: [yes/no]
+      - Edge cases handled: [yes/no]
+      - Error conditions considered: [yes/no]
+      - Boundary conditions checked: [yes/no]
+
+      **Potential Bugs**:
+      - Off-by-one errors: [locations]
+      - Null/undefined dereferencing: [locations]
+      - Resource leaks: [locations]
+      - Race conditions: [locations]
+      - Infinite loops possible: [locations]
+
+      **Error Handling**:
+      - Exceptions caught appropriately: [yes/no]
+      - Error messages helpful: [yes/no]
+      - Graceful degradation: [yes/no]
+      - Proper cleanup in error paths: [yes/no]
+
+      **Data Flow**:
+      - Input validation: [adequate/missing]
+      - Output sanitization: [adequate/missing]
+      - State management: [clean/problematic]
+
+      Critical Issues Found: [count]
+      [List with severity and location]
+    instance: 4
+    depends_on: ["Categorize Changes"]
+    timeout: 600
+    priority: high
+
+  - name: "Review Security"
+    prompt: |
+      SECURITY REVIEW:
+
+      Analyze code for security vulnerabilities:
+
+      **Input Validation**:
+      - User input validated: [yes/no]
+      - SQL injection protected: [yes/no]
+      - XSS protected: [yes/no]
+      - Command injection protected: [yes/no]
+      - Path traversal protected: [yes/no]
+
+      **Authentication & Authorization**:
+      - Auth checks present: [yes/no]
+      - Authorization properly enforced: [yes/no]
+      - Session management secure: [yes/no]
+      - Password handling secure: [yes/no]
+
+      **Data Protection**:
+      - Sensitive data encrypted: [yes/no]
+      - PII handled properly: [yes/no]
+      - Secrets not hardcoded: [yes/no]
+      - Secure communication (HTTPS): [yes/no]
+
+      **Common Vulnerabilities**:
+      - OWASP Top 10 issues: [list]
+      - Insecure dependencies: [list]
+      - Insecure configurations: [list]
+
+      **Critical Security Issues**:
+      [List with CVE-like severity ratings]
+
+      Security Risk Level: [low/medium/high/critical]
+    instance: 5
+    depends_on: ["Categorize Changes"]
+    timeout: 600
+    priority: critical
+
+  - name: "Review Performance"
+    prompt: |
+      PERFORMANCE REVIEW:
+
+      Analyze code for performance concerns:
+
+      **Algorithmic Complexity**:
+      - Time complexity: [O(n), O(n²), etc.]
+      - Space complexity: [O(n), O(1), etc.]
+      - Inefficient algorithms: [list]
+
+      **Database Queries**:
+      - N+1 query problems: [locations]
+      - Missing indexes: [tables/columns]
+      - Inefficient queries: [list]
+      - Query result set too large: [locations]
+
+      **Memory Management**:
+      - Memory leaks possible: [locations]
+      - Large allocations: [locations]
+      - Unnecessary copies: [locations]
+
+      **I/O Operations**:
+      - Blocking I/O in async code: [locations]
+      - File operations optimized: [yes/no]
+      - Network calls efficient: [yes/no]
+
+      **Caching**:
+      - Caching opportunities: [list]
+      - Cache invalidation correct: [yes/no]
+
+      **Concurrency**:
+      - Thread-safe: [yes/no]
+      - Deadlock potential: [locations]
+      - Async/await used properly: [yes/no]
+
+      Performance Issues: [count]
+      [List with impact estimation]
+    instance: 6
+    depends_on: ["Categorize Changes"]
+    timeout: 600
+
+  - name: "Review Test Coverage"
+    prompt: |
+      TEST COVERAGE REVIEW:
+
+      Analyze test coverage for changes:
+
+      **Test Presence**:
+      - Unit tests added: [yes/no]
+      - Integration tests added: [yes/no]
+      - E2E tests updated: [yes/no]
+
+      **Coverage Quality**:
+      - Happy path tested: [yes/no]
+      - Edge cases tested: [yes/no]
+      - Error conditions tested: [yes/no]
+      - Boundary values tested: [yes/no]
+
+      **Test Quality**:
+      - Tests deterministic: [yes/no]
+      - Tests independent: [yes/no]
+      - Test names descriptive: [yes/no]
+      - Assertions meaningful: [yes/no]
+      - No test smells: [yes/no]
+
+      **Missing Tests**:
+      [List untested code paths]
+
+      **Test Improvements Needed**:
+      1. [Specific gaps]
+      2. [Additional test cases]
+      3. [Test refactoring]
+
+      Test Coverage: [adequate/inadequate]
+    instance: 7
+    depends_on: ["Categorize Changes"]
+    timeout: 300
+
+  # Stage 3: Architecture Review
+  - name: "Review Architecture and Design"
+    prompt: |
+      ARCHITECTURE AND DESIGN REVIEW:
+
+      Evaluate architectural decisions:
+
+      **Design Patterns**:
+      - Patterns used appropriately: [yes/no]
+      - SOLID principles followed: [yes/no]
+      - Separation of concerns: [yes/no]
+      - DRY principle followed: [yes/no]
+
+      **Code Organization**:
+      - File structure logical: [yes/no]
+      - Module boundaries clear: [yes/no]
+      - Dependency direction correct: [yes/no]
+      - Circular dependencies: [yes/no]
+
+      **API Design**:
+      - API intuitive: [yes/no]
+      - Backward compatible: [yes/no]
+      - Versioning strategy: [appropriate/missing]
+      - Error responses consistent: [yes/no]
+
+      **Coupling and Cohesion**:
+      - Low coupling: [yes/no]
+      - High cohesion: [yes/no]
+      - Dependencies appropriate: [yes/no]
+
+      **Scalability**:
+      - Design scales: [yes/no]
+      - Bottlenecks identified: [list]
+      - Resource usage reasonable: [yes/no]
+
+      **Maintainability**:
+      - Easy to understand: [yes/no]
+      - Easy to modify: [yes/no]
+      - Well documented: [yes/no]
+
+      Architecture Issues: [count]
+      [List with recommendations]
+    instance: 8
+    depends_on: ["Categorize Changes"]
+    timeout: 600
+
+  - name: "Review Documentation"
+    prompt: |
+      DOCUMENTATION REVIEW:
+
+      Evaluate documentation quality:
+
+      **Code Documentation**:
+      - Functions documented: [%]
+      - Complex logic explained: [yes/no]
+      - Public APIs documented: [yes/no]
+      - Docstrings complete: [yes/no]
+
+      **User Documentation**:
+      - README updated: [yes/no]
+      - API docs updated: [yes/no]
+      - Examples provided: [yes/no]
+      - Breaking changes noted: [yes/no]
+
+      **Comments Quality**:
+      - Comments helpful: [yes/no]
+      - No outdated comments: [yes/no]
+      - No commented-out code: [yes/no]
+      - TODO comments tracked: [yes/no]
+
+      **Changelog**:
+      - Changes documented: [yes/no]
+      - Format consistent: [yes/no]
+
+      Documentation Gaps:
+      [List specific missing documentation]
+    instance: 9
+    depends_on: ["Categorize Changes"]
+    timeout: 180
+
+  # Stage 4: Automated Checks
+  - name: "Run Static Analysis"
+    directory: "."
+    command: |
+      echo "Running static analysis..."
+
+      # Python
+      if command -v pylint &> /dev/null; then
+        pylint --output-format=json $(cat changed_files.txt | grep '\.py$') > pylint_results.json 2>&1 || true
+      fi
+
+      # JavaScript
+      if command -v eslint &> /dev/null; then
+        eslint --format json $(cat changed_files.txt | grep -E '\.(js|ts)$') > eslint_results.json 2>&1 || true
+      fi
+
+      # Go
+      if command -v staticcheck &> /dev/null; then
+        staticcheck $(cat changed_files.txt | grep '\.go$') > staticcheck_results.txt 2>&1 || true
+      fi
+
+      echo "Static analysis complete"
+    instance: 10
+    depends_on: ["Analyze Changed Files"]
+    timeout: 300
+
+  - name: "Run Security Scanners"
+    directory: "."
+    command: |
+      echo "Running security scanners..."
+
+      # Bandit for Python
+      if command -v bandit &> /dev/null; then
+        bandit -f json -o bandit_results.json $(cat changed_files.txt | grep '\.py$') 2>&1 || true
+      fi
+
+      # npm audit for Node.js
+      if [ -f "package.json" ]; then
+        npm audit --json > npm_audit.json 2>&1 || true
+      fi
+
+      # Semgrep
+      if command -v semgrep &> /dev/null; then
+        semgrep --config auto --json $(cat changed_files.txt) > semgrep_results.json 2>&1 || true
+      fi
+
+      echo "Security scanning complete"
+    instance: 11
+    depends_on: ["Analyze Changed Files"]
+    timeout: 600
+
+  - name: "Check Dependencies"
+    directory: "."
+    command: |
+      echo "Checking dependencies..."
+
+      # Python dependencies
+      if [ -f "requirements.txt" ]; then
+        pip list --outdated --format=json > pip_outdated.json 2>&1 || true
+        safety check --json > safety_results.json 2>&1 || true
+      fi
+
+      # Node.js dependencies
+      if [ -f "package.json" ]; then
+        npm outdated --json > npm_outdated.json 2>&1 || true
+      fi
+
+      # Go dependencies
+      if [ -f "go.mod" ]; then
+        go list -u -m -json all > go_deps.json 2>&1 || true
+      fi
+
+      echo "Dependency check complete"
+    instance: 12
+    depends_on: ["Analyze Changed Files"]
+    timeout: 300
+
+  # Stage 5: Final Report
+  - name: "Generate Review Report"
+    prompt: |
+      COMPREHENSIVE CODE REVIEW REPORT:
+
+      **Change Summary**:
+      - Files changed: [count]
+      - Lines added: [count]
+      - Lines deleted: [count]
+      - Change type: [feature/bugfix/refactor/etc.]
+
+      **Overall Assessment**:
+      - Code quality: [excellent/good/fair/poor]
+      - Security: [secure/minor issues/major issues/critical]
+      - Performance: [optimal/acceptable/needs improvement]
+      - Test coverage: [excellent/good/insufficient]
+      - Documentation: [complete/adequate/incomplete]
+
+      **Critical Issues** (Must Fix):
+      1. [Security vulnerabilities]
+      2. [Logic errors]
+      3. [Breaking changes]
+
+      **High Priority Issues** (Should Fix):
+      1. [Performance problems]
+      2. [Missing tests]
+      3. [Design concerns]
+
+      **Medium Priority Issues** (Consider Fixing):
+      1. [Code style violations]
+      2. [Refactoring opportunities]
+      3. [Documentation gaps]
+
+      **Low Priority Issues** (Nice to Have):
+      1. [Minor style improvements]
+      2. [Comment improvements]
+      3. [Optional optimizations]
+
+      **Code Quality Metrics**:
+      - Cyclomatic complexity: [avg]
+      - Function length: [avg lines]
+      - Code duplication: [%]
+      - Test coverage: [%]
+
+      **Security Findings**:
+      - Critical vulnerabilities: [count]
+      - High severity: [count]
+      - Medium severity: [count]
+      - Low severity: [count]
+
+      **Performance Concerns**:
+      - Algorithmic issues: [count]
+      - Database issues: [count]
+      - Memory issues: [count]
+
+      **Positive Highlights**:
+      - [Good patterns used]
+      - [Well-tested code]
+      - [Clear documentation]
+      - [Performance improvements]
+
+      **Recommendations**:
+      1. [Top priority actions]
+      2. [Architectural suggestions]
+      3. [Long-term improvements]
+
+      **Review Checklist**:
+      - [ ] No security vulnerabilities
+      - [ ] No logic errors
+      - [ ] Performance acceptable
+      - [ ] Tests added/updated
+      - [ ] Documentation updated
+      - [ ] Code style consistent
+      - [ ] No breaking changes (or documented)
+      - [ ] Dependencies up to date
+      - [ ] No hardcoded secrets
+      - [ ] Error handling appropriate
+
+      **Automated Tool Results**:
+      - Static analysis warnings: [count]
+      - Security scanner alerts: [count]
+      - Dependency issues: [count]
+
+      **Final Recommendation**:
+      - ✅ APPROVE - Ready to merge
+      - 🔄 REQUEST CHANGES - Issues must be addressed
+      - ❌ REJECT - Major problems found
+
+      **Review Confidence**: [high/medium/low]
+      **Estimated Fix Time**: [hours/days]
+
+      **Next Steps**:
+      1. [Address critical issues]
+      2. [Update tests]
+      3. [Revise documentation]
+    depends_on:
+      - "Categorize Changes"
+      - "Review Code Style"
+      - "Review Logic and Correctness"
+      - "Review Security"
+      - "Review Performance"
+      - "Review Test Coverage"
+      - "Review Architecture and Design"
+      - "Review Documentation"
+      - "Run Static Analysis"
+      - "Run Security Scanners"
+      - "Check Dependencies"
+    priority: high
+
+# COMPREHENSIVE CODE REVIEW NOTES:
+# - Multi-dimensional code analysis
+# - Security-first approach
+# - Performance considerations
+# - Test coverage validation
+# - Architecture evaluation
+# - Automated tool integration
+# - Actionable recommendations
+# - Priority-based issue tracking
+# - Suitable for PR reviews
+# - Can be customized per team standards

@@ -1,0 +1,35 @@
+# Example: Parallel Code Analysis
+
+name: "Parallel Code Analysis"
+
+instances: 4
+
+tasks:
+  - name: "Security Audit"
+    directory: "."
+    prompt: "Perform a security audit of the codebase. Look for common vulnerabilities like SQL injection, XSS, authentication issues, etc."
+    instance: 1
+
+  - name: "Performance Analysis"
+    directory: "."
+    prompt: "Analyze the codebase for performance issues. Look for inefficient algorithms, unnecessary computations, database N+1 queries, etc."
+    instance: 2
+
+  - name: "Code Quality Review"
+    directory: "."
+    prompt: "Review code quality. Look for code smells, duplication, overly complex functions, poor naming, missing error handling, etc."
+    instance: 3
+
+  - name: "Architecture Review"
+    directory: "."
+    prompt: "Review the overall architecture. Analyze component coupling, separation of concerns, design patterns used, and suggest improvements."
+    instance: 4
+
+  - name: "Generate Summary Report"
+    directory: "."
+    prompt: "Based on the security, performance, quality, and architecture reviews, generate a comprehensive summary report with prioritized recommendations."
+    depends_on:
+      - "Security Audit"
+      - "Performance Analysis"
+      - "Code Quality Review"
+      - "Architecture Review"

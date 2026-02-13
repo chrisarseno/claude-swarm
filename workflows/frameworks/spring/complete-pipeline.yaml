@@ -1,0 +1,351 @@
+# Spring Boot Complete Pipeline
+# Comprehensive validation for Spring Boot applications
+
+name: "Spring Boot Complete Pipeline"
+instances: 13
+
+tasks:
+  # Stage 1: Setup
+  - name: "Clean & Compile"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn clean compile
+      else
+        gradle clean compileJava
+      fi
+    instance: 1
+    timeout: 300
+
+  # Stage 2: Code Quality (parallel)
+  - name: "CheckStyle"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn checkstyle:check
+      else
+        gradle checkstyleMain
+      fi
+    instance: 2
+    depends_on: ["Clean & Compile"]
+    timeout: 180
+
+  - name: "PMD Analysis"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn pmd:check || true
+      else
+        gradle pmdMain || true
+      fi
+    instance: 3
+    depends_on: ["Clean & Compile"]
+    timeout: 180
+
+  - name: "SpotBugs"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn spotbugs:check || true
+      else
+        gradle spotbugsMain || true
+      fi
+    instance: 4
+    depends_on: ["Clean & Compile"]
+    timeout: 300
+
+  # Stage 3: Spring Boot Specific Analysis (parallel)
+  - name: "Spring Boot Properties Review"
+    prompt: |
+      SPRING BOOT CONFIGURATION REVIEW:
+      1. Check application.properties/yml completeness
+      2. Verify environment-specific configs
+      3. Check for hardcoded values
+      4. Review datasource configuration
+      5. Check security configuration
+      6. Review actuator endpoints
+      7. Check logging configuration
+      8. Verify server settings
+      9. Review caching configuration
+      10. Check connection pool settings
+    instance: 5
+    depends_on: ["Clean & Compile"]
+    timeout: 180
+
+  - name: "Spring Components Analysis"
+    prompt: |
+      SPRING COMPONENT REVIEW:
+      1. Controllers properly annotated (@RestController/@Controller)
+      2. Services have @Service annotation
+      3. Repositories properly defined
+      4. Component scanning configured
+      5. Bean definitions appropriate
+      6. Dependency injection properly used
+      7. Transaction management configured
+      8. Exception handlers implemented
+      9. Proper use of @Autowired vs constructor injection
+      10. Circular dependencies avoided
+    instance: 6
+    depends_on: ["Clean & Compile"]
+    timeout: 300
+
+  # Stage 4: Security Analysis (parallel)
+  - name: "Spring Security Review"
+    prompt: |
+      SPRING SECURITY ANALYSIS:
+      1. Security configuration present
+      2. Authentication mechanism implemented
+      3. Authorization rules defined
+      4. CSRF protection configured
+      5. Password encoding configured
+      6. Session management configured
+      7. CORS configuration
+      8. Method security enabled (@PreAuthorize)
+      9. OAuth2/JWT implementation (if applicable)
+      10. Security headers configured
+    instance: 7
+    depends_on: ["Clean & Compile"]
+    timeout: 300
+
+  - name: "OWASP Dependency Check"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn org.owasp:dependency-check-maven:check || true
+      else
+        gradle dependencyCheckAnalyze || true
+      fi
+    instance: 8
+    depends_on: ["Clean & Compile"]
+    timeout: 600
+
+  # Stage 5: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn test -Dtest='**/*Test'
+      else
+        gradle test
+      fi
+    instance: 9
+    depends_on: ["Clean & Compile"]
+    timeout: 600
+
+  - name: "Integration Tests"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn verify -Dtest='**/*IT'
+      else
+        gradle integrationTest
+      fi
+    instance: 10
+    depends_on: ["Clean & Compile"]
+    timeout: 900
+
+  - name: "Test Coverage"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn jacoco:report
+      else
+        gradle jacocoTestReport
+      fi
+    instance: 11
+    depends_on: ["Unit Tests"]
+    timeout: 180
+
+  # Stage 6: REST API Validation
+  - name: "API Documentation Review"
+    prompt: |
+      SPRING REST API REVIEW:
+      1. Swagger/OpenAPI configured
+      2. All endpoints documented
+      3. Request/response DTOs defined
+      4. Validation annotations used
+      5. Exception handling consistent
+      6. HTTP status codes appropriate
+      7. Content negotiation configured
+      8. API versioning strategy
+      9. HATEOAS implementation (if applicable)
+      10. Response pagination implemented
+    instance: 12
+    depends_on: ["Clean & Compile"]
+    timeout: 300
+
+  # Stage 7: Database & JPA Analysis
+  - name: "JPA/Hibernate Review"
+    prompt: |
+      JPA/HIBERNATE ANALYSIS:
+      1. Entity mappings correct
+      2. Relationships properly defined
+      3. Lazy loading configured
+      4. N+1 query prevention
+      5. Query optimization
+      6. Transaction boundaries appropriate
+      7. Database indexes defined
+      8. Flyway/Liquibase migrations present
+      9. Connection pooling configured
+      10. Query caching configured
+    instance: 13
+    depends_on: ["Clean & Compile"]
+    timeout: 300
+
+  # Stage 8: Performance Analysis
+  - name: "Performance Review"
+    prompt: |
+      SPRING BOOT PERFORMANCE ANALYSIS:
+      1. Caching strategy implemented
+      2. Async processing used appropriately
+      3. Thread pool configuration
+      4. Connection pool sizing
+      5. Lazy initialization where appropriate
+      6. Database query optimization
+      7. Static resource handling
+      8. Compression enabled
+      9. Actuator metrics configured
+      10. Health checks implemented
+    depends_on: ["Clean & Compile"]
+    timeout: 300
+
+  # Stage 9: Packaging
+  - name: "Package Application"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn package -DskipTests
+      else
+        gradle bootJar
+      fi
+    depends_on: ["Unit Tests", "Integration Tests"]
+    timeout: 600
+
+  - name: "Docker Build"
+    directory: "."
+    command: "docker build -t spring-app:latest . || echo 'Dockerfile not found'"
+    depends_on: ["Package Application"]
+    timeout: 600
+
+  # Stage 10: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      SPRING BOOT PIPELINE COMPREHENSIVE REPORT:
+
+      **Environment**:
+      - Spring Boot version: [version]
+      - Java version: [version]
+      - Build tool: [Maven/Gradle]
+
+      **Code Quality**:
+      - CheckStyle violations: [count]
+      - PMD issues: [count]
+      - SpotBugs bugs: [count]
+      - Code smells: [count]
+
+      **Spring Configuration**:
+      - Profiles configured: [list]
+      - Actuator endpoints: [enabled/disabled]
+      - Configuration externalized: [yes/no]
+      - Hardcoded values: [count]
+
+      **Components**:
+      - Controllers: [count]
+      - Services: [count]
+      - Repositories: [count]
+      - Configurations: [count]
+      - Proper annotations: [yes/no]
+      - Dependency injection: [good/needs improvement]
+
+      **Security**:
+      - Spring Security: [configured/missing]
+      - Authentication: [implemented/missing]
+      - Authorization: [implemented/missing]
+      - CSRF protection: [enabled/disabled]
+      - OWASP vulnerabilities: [count by severity]
+      - Security headers: [configured/missing]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - Integration tests: [passed/failed] ([X/Y])
+      - Test coverage: [%]
+      - Controller tests: [%]
+      - Service tests: [%]
+
+      **REST API**:
+      - Total endpoints: [count]
+      - Documentation: [complete/incomplete]
+      - Validation: [implemented/missing]
+      - Error handling: [consistent/inconsistent]
+      - API versioning: [implemented/missing]
+
+      **Database**:
+      - JPA entities: [count]
+      - Repository methods: [count]
+      - Migrations: [present/missing]
+      - N+1 queries: [count]
+      - Missing indexes: [count]
+      - Query optimization: [good/needs improvement]
+
+      **Performance**:
+      - Caching: [implemented/missing]
+      - Async processing: [used/not used]
+      - Connection pooling: [configured/default]
+      - Actuator metrics: [enabled/disabled]
+      - Health checks: [implemented/missing]
+
+      **Dependencies**:
+      - Total dependencies: [count]
+      - Spring dependencies: [count]
+      - Outdated: [count]
+      - Vulnerabilities: [count]
+
+      **Package**:
+      - Artifact type: [JAR/WAR]
+      - Size: [MB]
+      - Docker image: [built/not built]
+      - Docker image size: [MB]
+
+      **Best Practices**:
+      - SOLID principles: [score]
+      - Exception handling: [score]
+      - Transaction management: [score]
+      - Logging: [score]
+      - Configuration management: [score]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Quality Gate**: [PASSED/FAILED]
+      **Security Rating**: [A-F]
+    depends_on:
+      - "CheckStyle"
+      - "PMD Analysis"
+      - "SpotBugs"
+      - "Spring Boot Properties Review"
+      - "Spring Components Analysis"
+      - "Spring Security Review"
+      - "OWASP Dependency Check"
+      - "Unit Tests"
+      - "Integration Tests"
+      - "Test Coverage"
+      - "API Documentation Review"
+      - "JPA/Hibernate Review"
+      - "Performance Review"
+      - "Package Application"
+      - "Docker Build"
+    priority: high
+
+# SPRING BOOT PIPELINE NOTES:
+# - Requires Java 11+ (17+ recommended)
+# - Configure application-{profile}.properties for environments
+# - Use @SpringBootTest for integration tests
+# - Configure Actuator for monitoring
+# - Use Flyway or Liquibase for DB migrations
+# - Implement proper exception handling with @ControllerAdvice
+# - Use constructor injection over field injection
+# - Configure proper logging (Logback/Log4j2)
+# - Use Spring profiles for environment-specific config
+# - Implement health checks and metrics

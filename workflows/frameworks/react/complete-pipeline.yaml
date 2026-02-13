@@ -1,0 +1,248 @@
+# React Complete Pipeline
+# Comprehensive validation for React applications
+
+name: "React Complete Pipeline"
+instances: 12
+
+tasks:
+  # Stage 1: Setup
+  - name: "Install Dependencies"
+    directory: "."
+    command: "npm ci"
+    instance: 1
+    timeout: 300
+
+  # Stage 2: Code Quality (parallel)
+  - name: "ESLint React Rules"
+    directory: "."
+    command: "npx eslint . --ext .jsx,.tsx --config .eslintrc.react.js"
+    instance: 2
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  - name: "Prettier Check"
+    directory: "."
+    command: "npx prettier --check 'src/**/*.{js,jsx,ts,tsx,css,scss}'"
+    instance: 3
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "TypeScript Check"
+    directory: "."
+    command: "npx tsc --noEmit --project tsconfig.json"
+    instance: 4
+    depends_on: ["Install Dependencies"]
+    timeout: 180
+
+  # Stage 3: React-Specific Analysis (parallel)
+  - name: "React Hook Linting"
+    directory: "."
+    command: "npx eslint . --ext .jsx,.tsx --rule 'react-hooks/rules-of-hooks: error'"
+    instance: 5
+    depends_on: ["Install Dependencies"]
+    timeout: 120
+
+  - name: "Component Analysis"
+    prompt: |
+      REACT COMPONENT ANALYSIS:
+      1. Identify overly complex components (>200 lines)
+      2. Check for prop drilling (>3 levels)
+      3. Verify proper component composition
+      4. Check for missing PropTypes/TypeScript types
+      5. Identify performance anti-patterns:
+         - Inline function definitions in render
+         - Missing React.memo on expensive components
+         - Unnecessary re-renders
+      6. Check for accessibility issues
+      7. Verify error boundaries exist
+    instance: 6
+    depends_on: ["Install Dependencies"]
+    timeout: 300
+
+  # Stage 4: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: "npm test -- --coverage --watchAll=false"
+    instance: 7
+    depends_on: ["ESLint React Rules", "TypeScript Check"]
+    timeout: 600
+
+  - name: "Component Tests"
+    directory: "."
+    command: "npm test -- --testPathPattern=components --watchAll=false"
+    instance: 8
+    depends_on: ["ESLint React Rules"]
+    timeout: 600
+
+  - name: "React Testing Library"
+    prompt: |
+      REACT TESTING BEST PRACTICES CHECK:
+      1. Tests use user-centric queries (getByRole, getByLabelText)
+      2. Avoid implementation details (querySelector, testId overuse)
+      3. Test user interactions, not internals
+      4. Check for proper async handling
+      5. Verify accessibility in tests
+      6. Check snapshot test usage (should be minimal)
+    instance: 9
+    depends_on: ["Unit Tests"]
+    timeout: 180
+
+  # Stage 5: Build & Bundle Analysis
+  - name: "Production Build"
+    directory: "."
+    command: "npm run build"
+    instance: 10
+    depends_on: ["Unit Tests", "Component Tests"]
+    timeout: 600
+
+  - name: "Bundle Size Analysis"
+    directory: "."
+    command: "npx source-map-explorer 'build/static/js/*.js' --json > bundle-analysis.json"
+    instance: 11
+    depends_on: ["Production Build"]
+    timeout: 120
+
+  - name: "Webpack Bundle Analyzer"
+    prompt: |
+      BUNDLE ANALYSIS REPORT:
+      1. Total bundle size: [size]
+      2. Largest dependencies: [top 5]
+      3. Code splitting analysis
+      4. Duplicate dependencies detected
+      5. Tree shaking effectiveness
+      6. Lazy loading opportunities
+
+      FLAG IF:
+      - Main bundle > 500KB
+      - Vendor bundle > 1MB
+      - Duplicate packages found
+      - Poor code splitting
+    instance: 12
+    depends_on: ["Bundle Size Analysis"]
+    timeout: 180
+
+  # Stage 6: Performance & Accessibility
+  - name: "Lighthouse Performance"
+    directory: "."
+    command: "npx lighthouse http://localhost:3000 --preset=desktop --output=json --output-path=lighthouse-report.json || true"
+    depends_on: ["Production Build"]
+    timeout: 300
+
+  - name: "Accessibility Audit"
+    directory: "."
+    command: "npx @axe-core/cli http://localhost:3000 --save accessibility-report.json || true"
+    depends_on: ["Production Build"]
+    timeout: 180
+
+  # Stage 7: React-Specific Security
+  - name: "React Security Scan"
+    prompt: |
+      REACT SECURITY ANALYSIS:
+      1. Check for dangerouslySetInnerHTML usage
+      2. Verify XSS prevention
+      3. Check for exposed secrets in code
+      4. Review third-party component security
+      5. Check for CSRF protection
+      6. Verify proper sanitization of user input
+      7. Check for secure API communication
+    depends_on: ["ESLint React Rules"]
+    timeout: 180
+
+  # Stage 8: Final Report
+  - name: "Generate React Pipeline Report"
+    prompt: |
+      REACT APPLICATION COMPREHENSIVE REPORT:
+
+      **Code Quality**:
+      - ESLint issues: [count]
+      - Prettier violations: [count]
+      - TypeScript errors: [count]
+      - React Hook violations: [count]
+
+      **Component Health**:
+      - Total components: [count]
+      - Complex components (>200 lines): [count]
+      - Components needing refactor: [list]
+      - Prop drilling issues: [count]
+      - Missing error boundaries: [count]
+
+      **Testing**:
+      - Test coverage: [%]
+      - Unit tests: [passed/failed]
+      - Component tests: [passed/failed]
+      - Integration tests: [passed/failed]
+      - Testing best practices: [score]
+
+      **Performance**:
+      - Lighthouse score: [score/100]
+      - First Contentful Paint: [ms]
+      - Time to Interactive: [ms]
+      - Largest Contentful Paint: [ms]
+      - Cumulative Layout Shift: [score]
+      - Total Blocking Time: [ms]
+
+      **Bundle Analysis**:
+      - Main bundle: [KB]
+      - Vendor bundle: [KB]
+      - Total bundle: [KB]
+      - Largest dependencies: [top 3]
+      - Code splitting: [good/needs improvement]
+      - Tree shaking: [effective/ineffective]
+
+      **Accessibility**:
+      - Accessibility score: [score/100]
+      - WCAG violations: [count]
+      - Critical issues: [count]
+      - Keyboard navigation: [pass/fail]
+      - Screen reader compatibility: [pass/fail]
+
+      **Security**:
+      - dangerouslySetInnerHTML usage: [count]
+      - XSS vulnerabilities: [count]
+      - Exposed secrets: [count]
+      - Third-party risks: [count]
+
+      **Dependencies**:
+      - React version: [version]
+      - Outdated dependencies: [count]
+      - Security vulnerabilities: [count]
+      - Deprecated packages: [list]
+
+      **Best Practices**:
+      - State management: [assessment]
+      - Routing implementation: [assessment]
+      - Component organization: [assessment]
+      - Code splitting: [assessment]
+      - Error handling: [assessment]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Performance Grade**: [A-F]
+      **Accessibility Grade**: [A-F]
+    depends_on:
+      - "ESLint React Rules"
+      - "Prettier Check"
+      - "TypeScript Check"
+      - "React Hook Linting"
+      - "Component Analysis"
+      - "Unit Tests"
+      - "Component Tests"
+      - "React Testing Library"
+      - "Production Build"
+      - "Bundle Size Analysis"
+      - "Webpack Bundle Analyzer"
+      - "Lighthouse Performance"
+      - "Accessibility Audit"
+      - "React Security Scan"
+    priority: high
+
+# REACT PIPELINE NOTES:
+# - Ensure development server is running for Lighthouse
+# - Use production build for accurate bundle analysis
+# - Consider React DevTools Profiler for runtime analysis
+# - Check for React 18 concurrent features usage
+# - Verify proper Suspense boundaries
+# - Check for excessive Context re-renders

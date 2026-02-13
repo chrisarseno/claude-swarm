@@ -1,0 +1,221 @@
+# Multi-Model Agent Configuration
+# Define which AI models to use for different tasks
+
+# Router Configuration
+router:
+  # Prefer local models when possible (saves cost)
+  prefer_local: false
+
+  # Maximum cost per task in dollars (prevents expensive tasks)
+  cost_threshold: 0.50
+
+  # Performance mode: "fast", "cost", "quality", or "balanced"
+  # - fast: Prioritize API-based models for speed
+  # - cost: Prioritize free/cheap models
+  # - quality: Prioritize best models regardless of cost
+  # - balanced: Balance between cost and quality
+  performance_mode: "balanced"
+
+# Agent Pool Configuration
+agents:
+  # Claude Code (via CLI) - Best for complex tasks with tool use
+  - id: "claude-code-1"
+    provider: "claude_code"
+    model: "sonnet"  # sonnet, opus, haiku
+    count: 3  # Spawn 3 instances
+    config:
+      working_dir: "."
+    use_for:
+      - code_generation
+      - code_review
+      - refactoring
+      - security
+      - debugging
+
+  # Anthropic API - Flexible API access to Claude models
+  - id: "claude-api-1"
+    provider: "anthropic_api"
+    model: "claude-sonnet-4.5"
+    count: 2
+    config:
+      system_prompt: "You are an expert software engineer."
+      max_tokens: 4096
+      temperature: 0.0
+    use_for:
+      - code_generation
+      - analysis
+      - documentation
+
+  # Claude Haiku - Fast and cheap for simple tasks
+  - id: "claude-haiku-1"
+    provider: "anthropic_api"
+    model: "claude-haiku-4"
+    count: 5
+    config:
+      max_tokens: 2048
+      temperature: 0.0
+    use_for:
+      - simple_tasks
+      - linting
+      - formatting
+      - quick_checks
+
+  # OpenAI GPT-4o - Alternative for code generation
+  - id: "gpt4o-1"
+    provider: "openai"
+    model: "gpt-4o"
+    count: 2
+    config:
+      system_prompt: "You are an expert programmer."
+      max_tokens: 4096
+      temperature: 0.0
+    use_for:
+      - code_generation
+      - testing
+      - documentation
+
+  # OpenAI o1 - Best for complex reasoning
+  - id: "o1-1"
+    provider: "openai"
+    model: "o1-mini"
+    count: 1
+    config:
+      max_tokens: 8192
+    use_for:
+      - complex_debugging
+      - architecture_design
+      - algorithm_design
+
+  # Ollama CodeLlama - Local model for privacy/cost savings
+  - id: "codellama-1"
+    provider: "ollama"
+    model: "codellama:34b"
+    count: 2
+    config:
+      ollama_url: "http://localhost:11434"
+      system_prompt: "You are a coding assistant."
+      max_tokens: 4096
+      temperature: 0.0
+    use_for:
+      - code_generation
+      - debugging
+      - code_review
+
+  # Ollama DeepSeek Coder - Excellent local coding model
+  - id: "deepseek-1"
+    provider: "ollama"
+    model: "deepseek-coder:33b"
+    count: 2
+    config:
+      ollama_url: "http://localhost:11434"
+    use_for:
+      - code_generation
+      - refactoring
+      - analysis
+
+# Task-specific routing rules
+routing_rules:
+  # Security tasks always use Claude Opus (best model)
+  security_scan:
+    provider: "claude_code"
+    model: "opus"
+    reason: "Security requires highest quality analysis"
+
+  # Simple linting uses cheapest model
+  linting:
+    provider: "anthropic_api"
+    model: "claude-haiku-4"
+    reason: "Simple task, save cost"
+
+  # Code review uses high-quality model
+  code_review:
+    provider: "claude_code"
+    model: "sonnet"
+    reason: "Review requires comprehensive analysis"
+
+  # Documentation can use local models
+  documentation:
+    provider: "ollama"
+    model: "codellama:34b"
+    reason: "Can run locally, no sensitive code exposure"
+
+  # Performance optimization uses reasoning model
+  performance_optimization:
+    provider: "openai"
+    model: "o1-mini"
+    reason: "Requires deep reasoning about algorithms"
+
+  # Quick fixes use fast, cheap models
+  quick_fix:
+    provider: "anthropic_api"
+    model: "claude-haiku-4"
+    reason: "Fast response for minor fixes"
+
+# Cost management
+cost_management:
+  # Maximum daily spend in dollars
+  daily_budget: 10.00
+
+  # Alert when approaching budget
+  alert_at_percent: 80
+
+  # Automatically switch to local models when budget hit
+  fallback_to_local: true
+
+  # Track costs per project
+  track_by_project: true
+
+# Model fallback strategy
+fallback:
+  # If preferred model unavailable, try these in order
+  claude-opus-4.5:
+    - claude-sonnet-4.5
+    - gpt-4o
+    - codellama:34b
+
+  claude-sonnet-4.5:
+    - claude-haiku-4
+    - gpt-4o
+    - deepseek-coder:33b
+
+  gpt-4o:
+    - claude-sonnet-4.5
+    - codellama:34b
+
+  ollama-models:
+    - claude-haiku-4  # Cheap API fallback
+    - gpt-3.5-turbo
+
+# Performance optimization
+performance:
+  # Enable request caching for repeated queries
+  enable_caching: true
+
+  # Parallel execution limit per provider
+  max_parallel_requests:
+    anthropic_api: 5
+    openai: 5
+    claude_code: 3
+    ollama: 2  # Local hardware limit
+
+  # Timeout for each provider (seconds)
+  timeouts:
+    anthropic_api: 120
+    openai: 120
+    claude_code: 300
+    ollama: 180
+
+# Monitoring and logging
+monitoring:
+  # Log all requests and responses
+  log_requests: true
+
+  # Track token usage
+  track_tokens: true
+
+  # Track costs
+  track_costs: true
+
+  # Export metrics to Prometheus
+  prometheus_enabled: false
+  prometheus_port: 9091

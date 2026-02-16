@@ -130,9 +130,15 @@ class SwarmOrchestrator:
                 if use_routing:
                     try:
                         analysis = self.task_analyzer.analyze(task.prompt)
+                        # Merge config preferred models with metadata preferred_model
+                        preferred = list(auto_select.preferred or [])
+                        meta_preferred = task.metadata.get("preferred_model")
+                        if meta_preferred and meta_preferred not in preferred:
+                            preferred.insert(0, meta_preferred)
                         routing_decision = await self.swarm_router.route(
                             analysis=analysis,
-                            preferred_models=auto_select.preferred,
+                            prefer_speed=task.metadata.get("prefer_speed", False),
+                            preferred_models=preferred or None,
                             fallback_model=auto_select.fallback,
                         )
                         logger.info("task_routed", task_id=task.id,

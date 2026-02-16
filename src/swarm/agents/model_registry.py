@@ -129,7 +129,7 @@ class LiveModelRegistry:
         # Also check via name heuristics for models not in static registry
         tool_names = ["qwen2.5", "qwen2:", "devstral", "mistral-nemo",
                        "llama3.1", "llama3.2", "llama3.3", "command-r",
-                       "firefunction", "hermes"]
+                       "firefunction", "hermes", "csuite-model", "csuite-technical"]
         for info in self._installed_models.values():
             if info not in results:
                 name_lower = info["name"].lower()

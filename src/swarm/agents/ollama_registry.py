@@ -902,6 +902,139 @@ OLLAMA_MODELS = {
         tool_calling_quality="excellent",
         task_tags=["code_review", "debugging", "documentation", "architecture"],
     ),
+
+    # === C-Suite Fine-Tuned Models ===
+
+    "csuite-model:latest": ModelProfile(
+        name="csuite-model",
+        full_name="C-Suite Generalist (Llama 3.1 8B LoRA)",
+        description="Fine-tuned model with 16-executive identity, personality coherence, and domain routing",
+        size=ModelSize.MEDIUM,
+        params="8B",
+        context_window=4096,
+        capabilities=[
+            AgentCapability.CODE_GENERATION,
+            AgentCapability.CODE_REVIEW,
+            AgentCapability.DEBUGGING,
+            AgentCapability.REFACTORING,
+            AgentCapability.ANALYSIS,
+            AgentCapability.GENERAL,
+        ],
+        strengths=["C-Suite executive personas", "Personality consistency", "Cross-domain routing", "Identity grounding"],
+        weaknesses=["Smaller context than base models", "Domain depth limited vs specialists"],
+        best_for=["C-Suite orchestration", "Executive decision support", "Multi-domain coordination"],
+        quantizations=[Quantization.Q4, Quantization.Q5, Quantization.Q8],
+        speed_rating=8,
+        quality_rating=7,
+        vram_required={"q4": "5GB", "q5": "6GB", "q8": "8GB"},
+        recommended_quant=Quantization.Q5,
+        supports_tool_calling=True,
+        tool_calling_quality="good",
+        task_tags=["code_review", "debugging", "refactoring", "architecture", "documentation", "strategic_planning"],
+    ),
+
+    "csuite-technical:latest": ModelProfile(
+        name="csuite-technical",
+        full_name="C-Suite Technical Specialist (CTO/CEngO/CIO/CSecO)",
+        description="Domain LoRA for code, architecture, security, and infrastructure tasks",
+        size=ModelSize.MEDIUM,
+        params="8B",
+        context_window=4096,
+        capabilities=[
+            AgentCapability.CODE_GENERATION,
+            AgentCapability.CODE_REVIEW,
+            AgentCapability.DEBUGGING,
+            AgentCapability.REFACTORING,
+            AgentCapability.SECURITY,
+            AgentCapability.PERFORMANCE,
+        ],
+        strengths=["Deep technical reasoning", "Security-aware", "Architecture design", "Code quality focus"],
+        weaknesses=["Limited business/operations context"],
+        best_for=["Code review", "Security audit", "Architecture design", "Technical debugging"],
+        quantizations=[Quantization.Q4, Quantization.Q5, Quantization.Q8],
+        speed_rating=8,
+        quality_rating=8,
+        vram_required={"q4": "5GB", "q5": "6GB", "q8": "8GB"},
+        recommended_quant=Quantization.Q5,
+        supports_tool_calling=True,
+        tool_calling_quality="good",
+        task_tags=["code_review", "debugging", "refactoring", "security_audit", "architecture", "testing"],
+    ),
+
+    "csuite-business:latest": ModelProfile(
+        name="csuite-business",
+        full_name="C-Suite Business Specialist (CFO/CRevO/CSO/CPO)",
+        description="Domain LoRA for finance, revenue, strategy, and product tasks",
+        size=ModelSize.MEDIUM,
+        params="8B",
+        context_window=4096,
+        capabilities=[
+            AgentCapability.ANALYSIS,
+            AgentCapability.GENERAL,
+            AgentCapability.DOCUMENTATION,
+        ],
+        strengths=["Financial analysis", "Revenue modeling", "Strategic planning", "Product roadmap"],
+        weaknesses=["Limited code generation ability"],
+        best_for=["Cost analysis", "Revenue forecasting", "Strategic planning", "Product prioritization"],
+        quantizations=[Quantization.Q4, Quantization.Q5, Quantization.Q8],
+        speed_rating=8,
+        quality_rating=7,
+        vram_required={"q4": "5GB", "q5": "6GB", "q8": "8GB"},
+        recommended_quant=Quantization.Q5,
+        supports_tool_calling=False,
+        tool_calling_quality="none",
+        task_tags=["cost_analysis", "revenue_analysis", "strategic_planning", "product_planning"],
+    ),
+
+    "csuite-operations:latest": ModelProfile(
+        name="csuite-operations",
+        full_name="C-Suite Operations Specialist (CoS/COO/CDO/CRO)",
+        description="Domain LoRA for coordination, data governance, research, and operations",
+        size=ModelSize.MEDIUM,
+        params="8B",
+        context_window=4096,
+        capabilities=[
+            AgentCapability.ANALYSIS,
+            AgentCapability.GENERAL,
+            AgentCapability.DOCUMENTATION,
+        ],
+        strengths=["Task coordination", "Data governance", "Research synthesis", "Operational planning"],
+        weaknesses=["Limited deep technical or financial reasoning"],
+        best_for=["Task routing", "Data governance", "Research coordination", "Operational planning"],
+        quantizations=[Quantization.Q4, Quantization.Q5, Quantization.Q8],
+        speed_rating=8,
+        quality_rating=7,
+        vram_required={"q4": "5GB", "q5": "6GB", "q8": "8GB"},
+        recommended_quant=Quantization.Q5,
+        supports_tool_calling=False,
+        tool_calling_quality="none",
+        task_tags=["task_routing", "data_governance", "research", "operational_planning"],
+    ),
+
+    "csuite-governance:latest": ModelProfile(
+        name="csuite-governance",
+        full_name="C-Suite Governance Specialist (CComO/CRiO/CCO/CMO)",
+        description="Domain LoRA for compliance, risk, customer success, and marketing",
+        size=ModelSize.MEDIUM,
+        params="8B",
+        context_window=4096,
+        capabilities=[
+            AgentCapability.ANALYSIS,
+            AgentCapability.GENERAL,
+            AgentCapability.DOCUMENTATION,
+        ],
+        strengths=["Compliance assessment", "Risk analysis", "Customer strategy", "Marketing planning"],
+        weaknesses=["Limited code or technical reasoning"],
+        best_for=["Compliance review", "Risk assessment", "Customer success", "Marketing strategy"],
+        quantizations=[Quantization.Q4, Quantization.Q5, Quantization.Q8],
+        speed_rating=8,
+        quality_rating=7,
+        vram_required={"q4": "5GB", "q5": "6GB", "q8": "8GB"},
+        recommended_quant=Quantization.Q5,
+        supports_tool_calling=False,
+        tool_calling_quality="none",
+        task_tags=["compliance", "risk_assessment", "customer_success", "marketing"],
+    ),
 }
 
 
@@ -1054,7 +1187,12 @@ def print_model_catalog():
         ],
         "Specialized": [
             "sqlcoder-7b", "magicoder-7b", "starcoder2-7b", "starcoder2-15b"
-        ]
+        ],
+        "C-Suite Fine-Tuned": [
+            "csuite-model:latest", "csuite-technical:latest",
+            "csuite-business:latest", "csuite-operations:latest",
+            "csuite-governance:latest"
+        ],
     }
 
     for category, models in categories.items():

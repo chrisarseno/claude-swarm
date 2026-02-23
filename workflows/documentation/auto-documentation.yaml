@@ -1,0 +1,451 @@
+# Automatic Documentation Generation Pipeline
+# Comprehensive documentation generation and validation
+
+name: "Automatic Documentation Generation"
+instances: 10
+
+tasks:
+  # Stage 1: Documentation Discovery
+  - name: "Discover Documentation Needs"
+    prompt: |
+      DOCUMENTATION DISCOVERY:
+      1. Identify project type and languages
+      2. Check for existing documentation
+      3. Identify undocumented components
+      4. List APIs/endpoints
+      5. Find configuration files
+      6. Identify database schema
+      7. Check for architecture diagrams
+      8. List deployment procedures
+    instance: 1
+    timeout: 180
+
+  # Stage 2: API Documentation (parallel)
+  - name: "OpenAPI/Swagger Documentation"
+    directory: "."
+    command: |
+      # FastAPI/Django Rest Framework
+      python -c "from app.main import app; import json; print(json.dumps(app.openapi()))" > openapi.json || \
+      # Spring Boot
+      curl http://localhost:8080/v3/api-docs > openapi.json || \
+      # Node.js
+      npm run generate:swagger || \
+      echo 'API documentation generation not configured'
+    instance: 2
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 180
+
+  - name: "API Documentation Quality"
+    prompt: |
+      API DOCUMENTATION REVIEW:
+      1. All endpoints documented
+      2. Request parameters described
+      3. Response schemas defined
+      4. Error codes documented
+      5. Authentication documented
+      6. Rate limits specified
+      7. Examples provided
+      8. Versioning strategy documented
+      9. Deprecation warnings
+      10. Changelog maintained
+    instance: 3
+    depends_on: ["OpenAPI/Swagger Documentation"]
+    timeout: 180
+
+  # Stage 3: Code Documentation (parallel)
+  - name: "Python Documentation"
+    directory: "."
+    command: |
+      # Generate Sphinx docs
+      sphinx-apidoc -o docs/source . && \
+      sphinx-build -b html docs/source docs/build || \
+      # Or pdoc
+      pdoc --html --output-dir docs . || \
+      echo 'Python documentation tools not configured'
+    instance: 4
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 300
+
+  - name: "JavaScript/TypeScript Documentation"
+    directory: "."
+    command: |
+      # Generate TypeDoc
+      npx typedoc --out docs . || \
+      # Or JSDoc
+      npx jsdoc -r -d docs . || \
+      echo 'JS documentation tools not configured'
+    instance: 5
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 300
+
+  - name: "Java Documentation"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn javadoc:javadoc
+      else
+        gradle javadoc
+      fi || echo 'Java documentation not configured'
+    instance: 6
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 300
+
+  # Stage 4: Database Documentation
+  - name: "Database Schema Documentation"
+    prompt: |
+      DATABASE SCHEMA DOCUMENTATION:
+      1. Generate ERD (Entity Relationship Diagram)
+      2. Document all tables
+      3. Document all columns with types
+      4. Document relationships/foreign keys
+      5. Document indexes
+      6. Document constraints
+      7. Document triggers/procedures
+      8. Document views
+      9. Sample queries
+      10. Migration history
+    instance: 7
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 300
+
+  - name: "Generate Database Docs"
+    directory: "."
+    command: |
+      # SchemaSpy
+      java -jar schemaspy.jar -t pgsql -db mydb -s public -u user -p pass -o docs/database || \
+      # Or dbdocs
+      dbdocs build dbml/schema.dbml || \
+      echo 'Database documentation tools not configured'
+    instance: 8
+    depends_on: ["Database Schema Documentation"]
+    timeout: 300
+
+  # Stage 5: Architecture Documentation
+  - name: "Architecture Documentation"
+    prompt: |
+      ARCHITECTURE DOCUMENTATION:
+
+      **System Overview**:
+      1. High-level architecture description
+      2. System components and their responsibilities
+      3. Component interaction diagram
+      4. Technology stack
+      5. Deployment architecture
+
+      **Design Decisions**:
+      1. Architectural patterns used
+      2. Design trade-offs
+      3. Technology choices and reasoning
+      4. Scalability approach
+      5. Security design
+
+      **Data Flow**:
+      1. Request/response flow
+      2. Data processing pipeline
+      3. Event flow (if event-driven)
+      4. State management
+      5. Caching strategy
+
+      **Infrastructure**:
+      1. Deployment diagram
+      2. Network topology
+      3. Load balancing strategy
+      4. Failover mechanisms
+      5. Disaster recovery plan
+
+      **Integration Points**:
+      1. External services
+      2. APIs consumed
+      3. Authentication/Authorization
+      4. Message queues
+      5. Data stores
+    instance: 9
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 600
+
+  # Stage 6: User Documentation
+  - name: "User/Developer Guide"
+    prompt: |
+      USER/DEVELOPER DOCUMENTATION:
+
+      **Getting Started**:
+      1. Prerequisites
+      2. Installation steps
+      3. Configuration guide
+      4. First-run instructions
+      5. Common issues and solutions
+
+      **User Guide**:
+      1. Feature overview
+      2. Step-by-step tutorials
+      3. Use case examples
+      4. Best practices
+      5. FAQ
+
+      **Developer Guide**:
+      1. Development environment setup
+      2. Code structure explanation
+      3. Contribution guidelines
+      4. Coding standards
+      5. Testing guidelines
+      6. Git workflow
+      7. Release process
+
+      **API Usage**:
+      1. Authentication
+      2. Common API calls
+      3. Code examples (multiple languages)
+      4. Error handling
+      5. Rate limiting
+    instance: 10
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 600
+
+  # Stage 7: README Generation
+  - name: "Generate Comprehensive README"
+    prompt: |
+      COMPREHENSIVE README.md:
+
+      # Project Name
+
+      [Brief description]
+
+      ## Features
+      - [List key features]
+
+      ## Prerequisites
+      - [List requirements]
+
+      ## Installation
+      ```bash
+      [Installation steps]
+      ```
+
+      ## Configuration
+      [Configuration instructions]
+
+      ## Usage
+      ```bash
+      [Usage examples]
+      ```
+
+      ## API Documentation
+      [Link to API docs or brief overview]
+
+      ## Architecture
+      [Brief architecture overview with diagram]
+
+      ## Development
+      ### Setup
+      [Development setup]
+
+      ### Testing
+      [How to run tests]
+
+      ### Building
+      [How to build]
+
+      ### Deployment
+      [Deployment instructions]
+
+      ## Contributing
+      [Contribution guidelines]
+
+      ## License
+      [License information]
+
+      ## Support
+      [Support information]
+
+      ## Changelog
+      [Link to CHANGELOG.md]
+    depends_on: ["Discover Documentation Needs"]
+    timeout: 300
+
+  # Stage 8: Documentation Validation
+  - name: "Documentation Coverage Analysis"
+    prompt: |
+      DOCUMENTATION COVERAGE ASSESSMENT:
+
+      **Code Documentation**:
+      - Functions/methods documented: [%]
+      - Classes documented: [%]
+      - Modules documented: [%]
+      - Complex logic explained: [%]
+
+      **API Documentation**:
+      - Endpoints documented: [%]
+      - Parameters documented: [%]
+      - Responses documented: [%]
+      - Examples provided: [%]
+
+      **Architecture**:
+      - System design documented: [yes/no]
+      - Component interactions documented: [yes/no]
+      - Diagrams present: [yes/no]
+      - Design decisions recorded: [yes/no]
+
+      **User Documentation**:
+      - Installation guide: [complete/incomplete]
+      - User guide: [complete/incomplete]
+      - Tutorials: [present/missing]
+      - FAQ: [present/missing]
+
+      **Developer Documentation**:
+      - Setup guide: [complete/incomplete]
+      - Contribution guide: [complete/incomplete]
+      - Coding standards: [documented/not documented]
+      - Testing guide: [complete/incomplete]
+
+      **Operational**:
+      - Deployment guide: [complete/incomplete]
+      - Monitoring guide: [complete/incomplete]
+      - Troubleshooting guide: [complete/incomplete]
+      - Runbooks: [present/missing]
+    depends_on:
+      - "API Documentation Quality"
+      - "Python Documentation"
+      - "JavaScript/TypeScript Documentation"
+      - "Java Documentation"
+      - "Database Schema Documentation"
+      - "Architecture Documentation"
+      - "User/Developer Guide"
+    timeout: 300
+
+  # Stage 9: Documentation Quality Check
+  - name: "Documentation Quality Review"
+    prompt: |
+      DOCUMENTATION QUALITY ASSESSMENT:
+
+      **Completeness**: [0-100]
+      - All major components documented
+      - No significant gaps
+      - Edge cases covered
+
+      **Accuracy**: [0-100]
+      - Information is up-to-date
+      - Code examples work
+      - Diagrams accurate
+
+      **Clarity**: [0-100]
+      - Easy to understand
+      - Well organized
+      - Good examples
+      - Consistent terminology
+
+      **Maintainability**: [0-100]
+      - Easy to update
+      - Version controlled
+      - Automated generation where possible
+      - Clear ownership
+
+      **Accessibility**: [0-100]
+      - Easy to find
+      - Good navigation
+      - Search functionality
+      - Multiple formats available
+
+      **Issues Found**:
+      1. [List documentation issues]
+
+      **Recommendations**:
+      1. [Improvement suggestions]
+    depends_on: ["Documentation Coverage Analysis"]
+    timeout: 300
+
+  # Stage 10: Final Report
+  - name: "Generate Documentation Report"
+    prompt: |
+      DOCUMENTATION GENERATION COMPREHENSIVE REPORT:
+
+      **Documentation Generated**:
+      - README.md: [generated/updated]
+      - API documentation: [generated/updated]
+      - Code documentation: [generated/updated]
+      - Architecture docs: [generated/updated]
+      - User guide: [generated/updated]
+      - Developer guide: [generated/updated]
+      - Database schema: [generated/updated]
+
+      **Coverage**:
+      - Overall documentation coverage: [%]
+      - Code documentation: [%]
+      - API documentation: [%]
+      - User documentation: [%]
+      - Developer documentation: [%]
+
+      **Quality Scores**:
+      - Completeness: [0-100]
+      - Accuracy: [0-100]
+      - Clarity: [0-100]
+      - Maintainability: [0-100]
+      - Accessibility: [0-100]
+      - Overall quality: [0-100]
+
+      **Documentation Files**:
+      - Total files: [count]
+      - Generated files: [list]
+      - Updated files: [list]
+      - Location: [path]
+
+      **API Documentation**:
+      - Format: [OpenAPI/Swagger/etc]
+      - Endpoints documented: [count/total]
+      - Interactive docs: [available/not available]
+      - Code examples: [present/missing]
+
+      **Architecture**:
+      - Architecture diagrams: [count]
+      - Component diagrams: [count]
+      - Sequence diagrams: [count]
+      - Data flow diagrams: [count]
+
+      **Issues & Gaps**:
+      1. [Undocumented areas]
+      2. [Outdated documentation]
+      3. [Missing diagrams]
+      4. [Inconsistencies]
+
+      **Recommendations**:
+      1. [High priority improvements]
+      2. [Documentation maintenance plan]
+      3. [Automation opportunities]
+      4. [Tools to adopt]
+
+      **Next Steps**:
+      1. Review and approve generated documentation
+      2. Fill identified gaps
+      3. Set up automated doc generation
+      4. Establish documentation standards
+      5. Create documentation update process
+
+      **Final Assessment**: [Excellent/Good/Fair/Poor]
+      **Documentation Ready**: YES/NO
+    depends_on:
+      - "OpenAPI/Swagger Documentation"
+      - "API Documentation Quality"
+      - "Python Documentation"
+      - "JavaScript/TypeScript Documentation"
+      - "Java Documentation"
+      - "Database Schema Documentation"
+      - "Generate Database Docs"
+      - "Architecture Documentation"
+      - "User/Developer Guide"
+      - "Generate Comprehensive README"
+      - "Documentation Coverage Analysis"
+      - "Documentation Quality Review"
+    priority: high
+
+# DOCUMENTATION NOTES:
+# - Keep documentation close to code
+# - Automate generation where possible
+# - Update docs with code changes
+# - Use doc-as-code approach
+# - Version documentation with code
+# - Make docs searchable
+# - Provide multiple formats (HTML, PDF, etc.)
+# - Include examples and tutorials
+# - Keep architecture diagrams updated
+# - Use tools: Sphinx, TypeDoc, Javadoc, etc.
+# - Consider: MkDocs, Docusaurus, GitBook
+# - Implement doc review in PR process

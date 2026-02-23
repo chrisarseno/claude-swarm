@@ -1,0 +1,67 @@
+# Pre-Commit Complete Validation
+# Run before every commit to catch issues early
+
+name: "Pre-Commit Complete Validation"
+instances: 6
+
+tasks:
+  - name: "Format Check"
+    directory: "."
+    prompt: "Check code formatting across all files. Report any formatting issues without fixing them."
+    priority: high
+    instance: 1
+    timeout: 120
+
+  - name: "Linting"
+    directory: "."
+    prompt: "Run linting tools appropriate for the project languages. Report all lint errors and warnings."
+    priority: high
+    instance: 2
+    timeout: 120
+
+  - name: "Type Checking"
+    directory: "."
+    prompt: "Run type checking for any statically typed or type-annotated code. Report type errors."
+    priority: high
+    instance: 3
+    timeout: 120
+
+  - name: "Secret Scanning"
+    directory: "."
+    prompt: "Scan for accidentally committed secrets, API keys, passwords, or sensitive data."
+    priority: critical
+    instance: 4
+    timeout: 60
+
+  - name: "Fast Unit Tests"
+    directory: "."
+    prompt: "Run fast unit tests only (skip slow integration tests). Report failures."
+    priority: high
+    instance: 5
+    timeout: 180
+
+  - name: "File Size Check"
+    directory: "."
+    command: "find . -type f -size +10M -not -path '*/\\.git/*' | head -20"
+    instance: 6
+    timeout: 30
+
+  - name: "Generate Report"
+    prompt: |
+      Summarize all pre-commit check results:
+      - Formatting issues
+      - Lint errors
+      - Type errors
+      - Security concerns
+      - Test failures
+      - Large files
+
+      Provide a COMMIT/NO-COMMIT recommendation with reasoning.
+    depends_on:
+      - "Format Check"
+      - "Linting"
+      - "Type Checking"
+      - "Secret Scanning"
+      - "Fast Unit Tests"
+      - "File Size Check"
+    priority: critical

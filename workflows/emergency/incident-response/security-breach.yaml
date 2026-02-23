@@ -1,0 +1,294 @@
+# Security Breach Incident Response
+# CRITICAL: Immediate response to security incidents
+
+name: "Security Breach Incident Response"
+instances: 8
+priority: critical
+
+tasks:
+  # Stage 1: Immediate Containment (CRITICAL - Run in parallel)
+  - name: "Assess Breach Scope"
+    prompt: |
+      IMMEDIATE BREACH ASSESSMENT:
+      1. What systems are compromised?
+      2. What data may be exposed?
+      3. Is attack ongoing or contained?
+      4. Attack vector identified?
+      5. Severity: P0/P1/P2
+      6. User impact: [number/scope]
+
+      IMMEDIATE ACTIONS NEEDED:
+      [List critical steps to contain breach]
+    priority: critical
+    instance: 1
+    timeout: 180
+
+  - name: "Isolate Affected Systems"
+    directory: "."
+    command: |
+      # Disable compromised services
+      kubectl scale deployment compromised-app --replicas=0 || \
+      docker stop $(docker ps -q) || \
+      systemctl stop affected-service
+    priority: critical
+    instance: 2
+    timeout: 60
+
+  - name: "Block Attacker Access"
+    directory: "."
+    command: |
+      # Block suspicious IPs
+      iptables -A INPUT -s ATTACKER_IP -j DROP || \
+      aws ec2 revoke-security-group-ingress --group-id sg-xxx || \
+      cloudflare api ...
+    priority: critical
+    instance: 3
+    timeout: 60
+
+  - name: "Revoke All Active Sessions"
+    directory: "."
+    command: |
+      # Invalidate all sessions
+      redis-cli FLUSHDB || \
+      ./scripts/revoke-all-sessions.sh
+    priority: critical
+    instance: 4
+    timeout: 60
+
+  # Stage 2: Evidence Collection (parallel)
+  - name: "Collect System Logs"
+    directory: "."
+    command: |
+      # Preserve logs before they're rotated
+      mkdir -p /tmp/incident-logs
+      cp -r /var/log/* /tmp/incident-logs/
+      kubectl logs -l app=affected --since=24h > /tmp/incident-logs/k8s-logs.txt
+    priority: critical
+    instance: 5
+    depends_on: ["Assess Breach Scope"]
+    timeout: 180
+
+  - name: "Capture Database State"
+    directory: "."
+    command: |
+      # Snapshot database for forensics
+      pg_dump dbname > /tmp/incident-logs/db-snapshot.sql || \
+      mysqldump --all-databases > /tmp/incident-logs/db-snapshot.sql
+    instance: 6
+    depends_on: ["Assess Breach Scope"]
+    timeout: 300
+
+  - name: "Network Traffic Capture"
+    prompt: |
+      NETWORK FORENSICS:
+      1. Capture recent network traffic patterns
+      2. Identify suspicious connections
+      3. Extract attacker IP addresses
+      4. Document data exfiltration attempts
+      5. Analyze DNS queries
+      6. Check for C2 communications
+    instance: 7
+    depends_on: ["Assess Breach Scope"]
+    timeout: 300
+
+  # Stage 3: Vulnerability Assessment
+  - name: "Identify Vulnerability"
+    prompt: |
+      ROOT CAUSE ANALYSIS:
+      1. How did the attacker gain access?
+      2. What vulnerability was exploited?
+      3. Timeline of attack progression
+      4. Was it targeted or opportunistic?
+      5. What data was accessed?
+      6. What systems were compromised?
+
+      VULNERABILITY DETAILS:
+      - Type: [SQLi/XSS/RCE/etc]
+      - Location: [file:line]
+      - Exploitability: [trivial/moderate/complex]
+      - Public exploit available: YES/NO
+    instance: 8
+    depends_on: ["Collect System Logs", "Network Traffic Capture"]
+    timeout: 600
+
+  # Stage 4: Impact Assessment (parallel)
+  - name: "Data Breach Assessment"
+    prompt: |
+      DATA EXPOSURE ANALYSIS:
+      1. What data was accessed?
+      2. How many users affected?
+      3. What PII was exposed?
+      4. Were passwords compromised?
+      5. Was payment data accessed?
+      6. Were API keys exposed?
+
+      REGULATORY IMPLICATIONS:
+      - GDPR notification required: YES/NO
+      - CCPA notification required: YES/NO
+      - Other regulations: [list]
+      - Notification deadline: [timeframe]
+    depends_on: ["Identify Vulnerability"]
+    timeout: 300
+
+  - name: "System Integrity Check"
+    directory: "."
+    command: |
+      # Check for backdoors/malware
+      rkhunter --check || \
+      chkrootkit || \
+      clamav scan
+    depends_on: ["Isolate Affected Systems"]
+    timeout: 600
+
+  # Stage 5: Remediation (sequential)
+  - name: "Rotate All Credentials"
+    directory: "."
+    command: |
+      # Rotate all secrets and keys
+      ./scripts/rotate-credentials.sh || \
+      aws secretsmanager rotate-secret --secret-id all || \
+      vault kv put secret/
+    priority: critical
+    depends_on: ["Revoke All Active Sessions"]
+    timeout: 300
+
+  - name: "Patch Vulnerability"
+    prompt: |
+      EMERGENCY PATCH:
+      1. Develop fix for identified vulnerability
+      2. Apply patch to affected code
+      3. Test fix doesn't break functionality
+      4. Verify vulnerability is closed
+      5. Check for similar vulnerabilities elsewhere
+
+      PATCH VERIFICATION:
+      - Vulnerability closed: YES/NO
+      - Side effects: [list]
+      - Additional fixes needed: [list]
+    priority: critical
+    depends_on: ["Identify Vulnerability"]
+    timeout: 600
+
+  - name: "Deploy Security Fix"
+    directory: "."
+    command: |
+      # Emergency deployment of security fix
+      git add . && git commit -m "SECURITY: Emergency patch" && \
+      ./deploy.sh production --emergency
+    priority: critical
+    depends_on: ["Patch Vulnerability", "Rotate All Credentials"]
+    timeout: 300
+
+  # Stage 6: Verification
+  - name: "Verify System Security"
+    prompt: |
+      POST-REMEDIATION SECURITY VERIFICATION:
+      1. Vulnerability exploit attempt (should fail)
+      2. All backdoors removed
+      3. Malware cleaned
+      4. Credentials rotated successfully
+      5. Sessions invalidated
+      6. Attacker access blocked
+      7. System functionality restored
+
+      SECURITY STATUS: SECURE / PARTIAL / COMPROMISED
+    priority: critical
+    depends_on: ["Deploy Security Fix", "System Integrity Check"]
+    timeout: 300
+
+  - name: "Resume Safe Operations"
+    directory: "."
+    command: |
+      # Carefully bring systems back online
+      kubectl scale deployment app --replicas=3 || \
+      docker start app || \
+      systemctl start service
+    priority: critical
+    depends_on: ["Verify System Security"]
+    timeout: 180
+
+  # Stage 7: Incident Report & Compliance
+  - name: "Generate Incident Report"
+    prompt: |
+      SECURITY BREACH INCIDENT REPORT:
+
+      **EXECUTIVE SUMMARY**:
+      - Incident Type: [type]
+      - Severity: [P0/P1/P2]
+      - Detection Time: [timestamp]
+      - Containment Time: [timestamp]
+      - Resolution Time: [timestamp]
+      - Total Duration: [duration]
+
+      **ATTACK DETAILS**:
+      - Attack Vector: [description]
+      - Vulnerability: [CVE/description]
+      - Attacker: [known/unknown]
+      - Attack Timeline: [sequence of events]
+
+      **IMPACT ASSESSMENT**:
+      - Systems Affected: [list]
+      - Users Affected: [count]
+      - Data Exposed: [description]
+      - Downtime: [duration]
+      - Financial Impact: [estimate]
+
+      **RESPONSE ACTIONS**:
+      1. [Chronological list of all actions taken]
+
+      **EVIDENCE COLLECTED**:
+      - Logs: [location]
+      - Database Snapshots: [location]
+      - Network Captures: [location]
+      - Forensic Analysis: [location]
+
+      **REMEDIATION**:
+      - Vulnerability Patched: YES/NO
+      - Credentials Rotated: YES/NO
+      - Systems Hardened: YES/NO
+      - Monitoring Enhanced: YES/NO
+
+      **COMPLIANCE & NOTIFICATIONS**:
+      - Regulatory Bodies Notified: [list]
+      - Users Notified: YES/NO/PENDING
+      - Law Enforcement Notified: YES/NO
+      - Insurance Notified: YES/NO
+
+      **LESSONS LEARNED**:
+      - What went wrong: [analysis]
+      - What went right: [analysis]
+      - Response effectiveness: [rating]
+
+      **PREVENTION MEASURES**:
+      1. [Immediate improvements implemented]
+      2. [Short-term improvements planned]
+      3. [Long-term improvements planned]
+
+      **POST-INCIDENT ACTIONS**:
+      - [ ] Full security audit
+      - [ ] Penetration testing
+      - [ ] Employee security training
+      - [ ] Process improvements
+      - [ ] Technology improvements
+      - [ ] Post-mortem meeting scheduled
+
+      **CURRENT STATUS**: [Contained/Monitoring/Resolved]
+      **RISK LEVEL**: [Current risk assessment]
+    depends_on:
+      - "Assess Breach Scope"
+      - "Data Breach Assessment"
+      - "Identify Vulnerability"
+      - "Verify System Security"
+    priority: critical
+
+# CRITICAL PROCEDURES:
+# 1. Follow incident response plan
+# 2. Preserve all evidence
+# 3. Document every action with timestamps
+# 4. Notify stakeholders immediately
+# 5. Involve legal and compliance teams
+# 6. Consider law enforcement involvement
+# 7. Prepare public communications
+# 8. Continuous monitoring for re-infection
+# 9. Schedule post-mortem within 48 hours
+# 10. Implement prevention measures ASAP

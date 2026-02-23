@@ -1,0 +1,399 @@
+# Canary Deployment
+# Gradual rollout with automated monitoring and rollback
+
+name: "Canary Deployment"
+instances: 8
+priority: high
+
+tasks:
+  # Stage 1: Preparation
+  - name: "Validate Canary Readiness"
+    prompt: |
+      CANARY DEPLOYMENT VALIDATION:
+
+      Pre-deployment checks:
+      1. Build artifacts validated
+      2. Staging tests passed
+      3. Security scan clean
+      4. Baseline metrics captured
+      5. Monitoring configured
+      6. Rollback plan ready
+      7. Team notified
+
+      Canary Configuration:
+      - Canary percentage: [%]
+      - Ramp-up schedule: [timeline]
+      - Success criteria defined
+      - Rollback triggers defined
+
+      Decision: GO / NO-GO
+    instance: 1
+    timeout: 180
+    priority: critical
+
+  # Stage 2: Deploy Canary (5% traffic)
+  - name: "Deploy Canary - 5% Traffic"
+    directory: "."
+    command: |
+      echo "Deploying canary with 5% traffic..."
+
+      if command -v kubectl &> /dev/null; then
+        # Deploy canary version
+        kubectl apply -f k8s/canary/deployment.yaml
+        kubectl set image deployment/app-canary app=app:canary
+
+        # Configure traffic split (95% stable, 5% canary)
+        kubectl apply -f - <<EOF
+      apiVersion: networking.istio.io/v1alpha3
+      kind: VirtualService
+      metadata:
+        name: app
+      spec:
+        hosts:
+        - app
+        http:
+        - match:
+          - headers:
+              canary:
+                exact: "true"
+          route:
+          - destination:
+              host: app-canary
+        - route:
+          - destination:
+              host: app-stable
+            weight: 95
+          - destination:
+              host: app-canary
+            weight: 5
+      EOF
+      fi
+    instance: 2
+    depends_on: ["Validate Canary Readiness"]
+    timeout: 300
+
+  - name: "Monitor Canary - 5%"
+    prompt: |
+      CANARY MONITORING - 5% TRAFFIC (10 minutes):
+
+      Compare canary vs stable:
+
+      **Error Rates**:
+      - Stable: [%]
+      - Canary: [%]
+      - Acceptable if canary < stable + 2%
+
+      **Response Times** (p99):
+      - Stable: [ms]
+      - Canary: [ms]
+      - Acceptable if canary < stable * 1.2
+
+      **Throughput**:
+      - Canary requests: [count]
+      - Canary success rate: [%]
+
+      **Resource Usage**:
+      - CPU: [stable vs canary]
+      - Memory: [stable vs canary]
+
+      **Red Flags** (auto-rollback if detected):
+      - Error rate spike > 5%
+      - Response time > 2x stable
+      - HTTP 5xx errors
+      - Memory leaks
+      - Crashes/restarts
+
+      Decision after 10 min: PROMOTE / HOLD / ROLLBACK
+    instance: 3
+    depends_on: ["Deploy Canary - 5% Traffic"]
+    timeout: 700
+    priority: critical
+
+  # Stage 3: Increase to 25% if healthy
+  - name: "Deploy Canary - 25% Traffic"
+    directory: "."
+    command: |
+      echo "Increasing canary to 25% traffic..."
+
+      kubectl apply -f - <<EOF
+      apiVersion: networking.istio.io/v1alpha3
+      kind: VirtualService
+      metadata:
+        name: app
+      spec:
+        hosts:
+        - app
+        http:
+        - route:
+          - destination:
+              host: app-stable
+            weight: 75
+          - destination:
+              host: app-canary
+            weight: 25
+      EOF
+    instance: 4
+    depends_on: ["Monitor Canary - 5%"]
+    timeout: 120
+
+  - name: "Monitor Canary - 25%"
+    prompt: |
+      CANARY MONITORING - 25% TRAFFIC (15 minutes):
+
+      Enhanced monitoring with more traffic:
+
+      **Performance Metrics**:
+      - Error rate delta: [canary - stable]
+      - Response time delta: [canary - stable]
+      - Throughput: [req/s]
+
+      **User Impact**:
+      - Users on canary: [estimated count]
+      - User-reported issues: [count]
+      - Customer complaints: [count]
+
+      **System Health**:
+      - Database query performance
+      - Cache hit rates
+      - External API calls
+      - Background job processing
+
+      **Business Metrics**:
+      - Conversion rate: [stable vs canary]
+      - API success rate: [%]
+      - Feature usage: [metrics]
+
+      Status: HEALTHY / DEGRADED / UNHEALTHY
+      Decision: PROMOTE / HOLD / ROLLBACK
+    instance: 5
+    depends_on: ["Deploy Canary - 25% Traffic"]
+    timeout: 1000
+    priority: critical
+
+  # Stage 4: Increase to 50%
+  - name: "Deploy Canary - 50% Traffic"
+    directory: "."
+    command: |
+      echo "Increasing canary to 50% traffic..."
+
+      kubectl apply -f - <<EOF
+      apiVersion: networking.istio.io/v1alpha3
+      kind: VirtualService
+      metadata:
+        name: app
+      spec:
+        hosts:
+        - app
+        http:
+        - route:
+          - destination:
+              host: app-stable
+            weight: 50
+          - destination:
+              host: app-canary
+            weight: 50
+      EOF
+    instance: 6
+    depends_on: ["Monitor Canary - 25%"]
+    timeout: 120
+
+  - name: "Monitor Canary - 50%"
+    prompt: |
+      CANARY MONITORING - 50% TRAFFIC (20 minutes):
+
+      Critical evaluation at 50/50 split:
+
+      **Statistical Significance**:
+      - Sample size sufficient: [yes/no]
+      - Metrics statistically significant: [yes/no]
+      - Confidence level: [%]
+
+      **Comparative Analysis**:
+      Metric | Stable | Canary | Delta | Acceptable
+      -------|--------|--------|-------|------------
+      Error rate | [%] | [%] | [%] | [yes/no]
+      P50 latency | [ms] | [ms] | [ms] | [yes/no]
+      P99 latency | [ms] | [ms] | [ms] | [yes/no]
+      Throughput | [r/s] | [r/s] | [r/s] | [yes/no]
+      CPU usage | [%] | [%] | [%] | [yes/no]
+      Memory | [MB] | [MB] | [MB] | [yes/no]
+
+      **Risk Assessment**:
+      - 50% of users affected if issue
+      - Rollback impact: [high/medium/low]
+      - Business risk: [high/medium/low]
+
+      Decision: PROMOTE TO 100% / HOLD AT 50% / ROLLBACK
+    instance: 7
+    depends_on: ["Deploy Canary - 50% Traffic"]
+    timeout: 1300
+    priority: critical
+
+  # Stage 5: Full Rollout to 100%
+  - name: "Deploy Canary - 100% Traffic"
+    directory: "."
+    command: |
+      echo "Promoting canary to 100% traffic..."
+
+      kubectl apply -f - <<EOF
+      apiVersion: networking.istio.io/v1alpha3
+      kind: VirtualService
+      metadata:
+        name: app
+      spec:
+        hosts:
+        - app
+        http:
+        - route:
+          - destination:
+              host: app-canary
+            weight: 100
+      EOF
+
+      # Mark canary as new stable
+      kubectl label deployment app-canary version=stable
+      kubectl label deployment app-stable version=old
+    instance: 8
+    depends_on: ["Monitor Canary - 50%"]
+    timeout: 120
+
+  - name: "Final Monitoring - 100%"
+    prompt: |
+      FINAL CANARY MONITORING - 100% TRAFFIC (30 minutes):
+
+      Full production monitoring:
+
+      **System-wide Metrics**:
+      - Overall error rate: [%]
+      - Overall response time: [ms]
+      - Total throughput: [req/s]
+      - All services healthy: [yes/no]
+
+      **Compared to Pre-Deployment**:
+      - Error rate change: [+/- %]
+      - Performance change: [+/- %]
+      - Resource usage change: [+/- %]
+
+      **Deployment Success Criteria**:
+      - Error rate < 1%: [yes/no]
+      - Performance within 10% of baseline: [yes/no]
+      - No critical errors: [yes/no]
+      - Resource usage acceptable: [yes/no]
+      - Business metrics unchanged: [yes/no]
+
+      **Long-term Stability**:
+      - Sustained performance: [yes/no]
+      - No memory leaks: [yes/no]
+      - No gradual degradation: [yes/no]
+
+      Final Status: SUCCESS / MONITORING / ROLLBACK NEEDED
+    instance: 1
+    depends_on: ["Deploy Canary - 100% Traffic"]
+    timeout: 1900
+    priority: critical
+
+  # Stage 6: Cleanup and Finalization
+  - name: "Cleanup Old Version"
+    directory: "."
+    command: |
+      echo "Cleaning up old stable version..."
+
+      # Keep old version for 1 hour for emergency rollback
+      sleep 3600
+
+      # Then scale down
+      kubectl scale deployment/app-stable --replicas=0
+
+      echo "Old version scaled down"
+    instance: 2
+    depends_on: ["Final Monitoring - 100%"]
+    timeout: 3700
+
+  # Stage 7: Report
+  - name: "Generate Canary Deployment Report"
+    prompt: |
+      CANARY DEPLOYMENT COMPREHENSIVE REPORT:
+
+      **Deployment Summary**:
+      - Strategy: Gradual Canary Rollout
+      - Started: [timestamp]
+      - Completed: [timestamp]
+      - Total duration: [minutes]
+      - Status: [SUCCESS/FAILED/ROLLED BACK]
+
+      **Rollout Timeline**:
+      - 5% traffic: [duration] - [status]
+      - 25% traffic: [duration] - [status]
+      - 50% traffic: [duration] - [status]
+      - 100% traffic: [duration] - [status]
+
+      **Version Information**:
+      - Previous version: [version]
+      - New version: [version]
+      - Commit: [hash]
+
+      **Performance Comparison** (New vs Old):
+
+      At 5% traffic:
+      - Error rate: [old %] vs [new %]
+      - Response time: [old ms] vs [new ms]
+      - Decision: [promote/hold/rollback]
+
+      At 25% traffic:
+      - Error rate: [old %] vs [new %]
+      - Response time: [old ms] vs [new ms]
+      - Decision: [promote/hold/rollback]
+
+      At 50% traffic:
+      - Error rate: [old %] vs [new %]
+      - Response time: [old ms] vs [new ms]
+      - Decision: [promote/hold/rollback]
+
+      At 100% traffic:
+      - Error rate: [%]
+      - Response time: [ms]
+      - Stability: [stable/unstable]
+
+      **Rollback Events**:
+      - Rollbacks triggered: [count]
+      - Rollback reasons: [list]
+      - Rollback duration: [minutes]
+
+      **User Impact**:
+      - Total users affected during canary: [count]
+      - User-reported issues: [count]
+      - Business impact: [none/minimal/moderate/high]
+
+      **Success Metrics**:
+      - All criteria met: [yes/no]
+      - Zero-incident deployment: [yes/no]
+      - Performance improved: [yes/no]
+      - Resource usage acceptable: [yes/no]
+
+      **Recommendations**:
+      1. [Improvements for next deployment]
+      2. [Monitoring enhancements]
+      3. [Process improvements]
+
+      **Final Status**: SUCCESS / PARTIAL SUCCESS / FAILED
+      **Deployment Quality**: [A-F]
+    depends_on:
+      - "Validate Canary Readiness"
+      - "Monitor Canary - 5%"
+      - "Monitor Canary - 25%"
+      - "Monitor Canary - 50%"
+      - "Final Monitoring - 100%"
+    priority: high
+
+# CANARY DEPLOYMENT NOTES:
+# - Gradual rollout minimizes risk
+# - Automated monitoring at each stage
+# - Auto-rollback on anomalies
+# - Statistical validation of metrics
+# - Suitable for high-risk deployments
+# - Requires service mesh (Istio/Linkerd) or similar
+# - Longer deployment time than blue-green
+# - Better for detecting subtle issues
+# - Can pause at any stage
+# - Rollback affects fewer users
+# - Good for A/B testing new features

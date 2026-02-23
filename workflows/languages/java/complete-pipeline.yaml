@@ -1,0 +1,317 @@
+# Java Complete Pipeline
+# Comprehensive validation for Java projects (Maven/Gradle)
+
+name: "Java Complete Pipeline"
+instances: 12
+
+tasks:
+  # Stage 1: Build Tool Detection & Setup
+  - name: "Detect Build Tool"
+    prompt: |
+      DETECT JAVA BUILD SYSTEM:
+      1. Check for pom.xml (Maven)
+      2. Check for build.gradle/build.gradle.kts (Gradle)
+      3. Verify Java version required
+      4. Check for multi-module project
+      5. Identify project structure
+
+      Set BUILD_TOOL environment variable: maven or gradle
+    instance: 1
+    timeout: 60
+
+  - name: "Clean Build"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn clean
+      else
+        gradle clean
+      fi
+    instance: 2
+    depends_on: ["Detect Build Tool"]
+    timeout: 180
+
+  # Stage 2: Compilation & Code Quality (parallel)
+  - name: "Compile Sources"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn compile -DskipTests
+      else
+        gradle compileJava
+      fi
+    instance: 3
+    depends_on: ["Clean Build"]
+    timeout: 300
+
+  - name: "Compile Tests"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn test-compile
+      else
+        gradle compileTestJava
+      fi
+    instance: 4
+    depends_on: ["Clean Build"]
+    timeout: 300
+
+  - name: "CheckStyle"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn checkstyle:check || true
+      else
+        gradle checkstyleMain || true
+      fi
+    instance: 5
+    depends_on: ["Compile Sources"]
+    timeout: 180
+
+  - name: "PMD Analysis"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn pmd:check || true
+      else
+        gradle pmdMain || true
+      fi
+    instance: 6
+    depends_on: ["Compile Sources"]
+    timeout: 180
+
+  # Stage 3: Static Analysis (parallel)
+  - name: "SpotBugs"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn spotbugs:check || true
+      else
+        gradle spotbugsMain || true
+      fi
+    instance: 7
+    depends_on: ["Compile Sources"]
+    timeout: 300
+
+  - name: "Error Prone"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn compile -Derrorprone || true
+      else
+        gradle compileJava -Perrorprone || true
+      fi
+    instance: 8
+    depends_on: ["Compile Sources"]
+    timeout: 180
+
+  # Stage 4: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn test -Dgroups=unit
+      else
+        gradle test --tests '*Unit*'
+      fi
+    instance: 9
+    depends_on: ["Compile Sources", "Compile Tests"]
+    timeout: 600
+
+  - name: "Integration Tests"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn verify -Dgroups=integration
+      else
+        gradle integrationTest
+      fi
+    instance: 10
+    depends_on: ["Compile Sources", "Compile Tests"]
+    timeout: 900
+
+  - name: "Test Coverage"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn jacoco:report
+      else
+        gradle jacocoTestReport
+      fi
+    instance: 11
+    depends_on: ["Unit Tests"]
+    timeout: 180
+
+  # Stage 5: Security & Dependencies
+  - name: "OWASP Dependency Check"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn org.owasp:dependency-check-maven:check || true
+      else
+        gradle dependencyCheckAnalyze || true
+      fi
+    instance: 12
+    depends_on: ["Compile Sources"]
+    timeout: 600
+
+  - name: "Dependency Analysis"
+    prompt: |
+      JAVA DEPENDENCY ANALYSIS:
+      1. List all dependencies (direct + transitive)
+      2. Identify version conflicts
+      3. Check for outdated dependencies
+      4. Find unused dependencies
+      5. Check for dependency scope issues
+      6. Verify no SNAPSHOT dependencies in production
+      7. Check for duplicate dependencies with different versions
+    depends_on: ["Compile Sources"]
+    timeout: 180
+
+  # Stage 6: Code Quality Analysis
+  - name: "SonarQube Analysis"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn sonar:sonar -Dsonar.host.url=http://localhost:9000 || true
+      else
+        gradle sonarqube || true
+      fi
+    depends_on: ["Test Coverage"]
+    timeout: 300
+
+  - name: "Code Complexity"
+    prompt: |
+      JAVA CODE COMPLEXITY REVIEW:
+      1. Identify classes > 500 lines
+      2. Methods with cyclomatic complexity > 10
+      3. Deeply nested code (>4 levels)
+      4. Long parameter lists (>5 params)
+      5. God classes (too many responsibilities)
+      6. Feature envy (methods using other classes more than own)
+      7. Duplicate code blocks
+    depends_on: ["Compile Sources"]
+    timeout: 300
+
+  # Stage 7: Packaging
+  - name: "Package Application"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn package -DskipTests
+      else
+        gradle build -x test
+      fi
+    depends_on: ["Unit Tests", "Integration Tests"]
+    timeout: 600
+
+  - name: "Generate Documentation"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn javadoc:javadoc
+      else
+        gradle javadoc
+      fi
+    depends_on: ["Package Application"]
+    timeout: 300
+
+  # Stage 8: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      JAVA PIPELINE COMPREHENSIVE REPORT:
+
+      **Build Information**:
+      - Build tool: [Maven/Gradle]
+      - Java version: [version]
+      - Project type: [single/multi-module]
+      - Build status: [success/failure]
+
+      **Compilation**:
+      - Source compilation: [status]
+      - Test compilation: [status]
+      - Warnings: [count]
+      - Errors: [count]
+
+      **Code Quality**:
+      - CheckStyle violations: [count]
+      - PMD issues: [count]
+      - SpotBugs bugs: [count]
+      - Error Prone warnings: [count]
+      - SonarQube rating: [A-E]
+
+      **Code Metrics**:
+      - Lines of code: [count]
+      - Complexity score: [score]
+      - Code smells: [count]
+      - Technical debt: [hours]
+      - Maintainability rating: [A-E]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - Integration tests: [passed/failed] ([X/Y])
+      - Test coverage: [%]
+      - Branch coverage: [%]
+      - Failed tests: [list]
+
+      **Security**:
+      - OWASP vulnerabilities: [count by severity]
+      - CVE findings: [count]
+      - Security hotspots: [count]
+
+      **Dependencies**:
+      - Direct dependencies: [count]
+      - Transitive dependencies: [count]
+      - Outdated: [count]
+      - Conflicts: [count]
+      - Vulnerabilities: [count]
+      - License issues: [count]
+
+      **Documentation**:
+      - Javadoc coverage: [%]
+      - Missing documentation: [count]
+
+      **Package**:
+      - Artifact generated: [JAR/WAR/EAR]
+      - Size: [MB]
+      - Main class: [class name]
+
+      **Best Practices**:
+      - SOLID principles: [assessment]
+      - Design patterns: [assessment]
+      - Exception handling: [assessment]
+      - Resource management: [assessment]
+      - Thread safety: [assessment]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Quality Gate**: [PASSED/FAILED]
+    depends_on:
+      - "Compile Sources"
+      - "Compile Tests"
+      - "CheckStyle"
+      - "PMD Analysis"
+      - "SpotBugs"
+      - "Error Prone"
+      - "Unit Tests"
+      - "Integration Tests"
+      - "Test Coverage"
+      - "OWASP Dependency Check"
+      - "Dependency Analysis"
+      - "SonarQube Analysis"
+      - "Code Complexity"
+      - "Package Application"
+      - "Generate Documentation"
+    priority: high
+
+# JAVA PIPELINE NOTES:
+# - Supports both Maven and Gradle
+# - Requires Java 11+ (adjust in pom.xml/build.gradle)
+# - Configure checkstyle.xml, pmd.xml for custom rules
+# - Set up SonarQube server or skip that step
+# - Adjust test execution based on project structure
+# - Consider module-specific testing for multi-module projects
+# - Use Maven profiles or Gradle build variants for environments

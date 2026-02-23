@@ -1,0 +1,296 @@
+# Infrastructure Validation Pipeline
+# Comprehensive validation for Infrastructure as Code (Terraform, Ansible, CloudFormation)
+
+name: "Infrastructure Validation Pipeline"
+instances: 10
+
+tasks:
+  # Stage 1: Detection & Setup
+  - name: "Detect IaC Tools"
+    prompt: |
+      INFRASTRUCTURE AS CODE DETECTION:
+      1. Check for Terraform files (*.tf)
+      2. Check for Ansible playbooks (*.yml in ansible/)
+      3. Check for CloudFormation templates (*.yaml, *.json)
+      4. Check for Kubernetes manifests
+      5. Check for Helm charts
+      6. Check for Pulumi code
+      7. Identify which tools are in use
+    instance: 1
+    timeout: 60
+
+  # Stage 2: Terraform Validation (if applicable, parallel)
+  - name: "Terraform Format Check"
+    directory: "."
+    command: "terraform fmt -check -recursive || echo 'No Terraform files'"
+    instance: 2
+    depends_on: ["Detect IaC Tools"]
+    timeout: 60
+
+  - name: "Terraform Validate"
+    directory: "."
+    command: "terraform init -backend=false && terraform validate || echo 'No Terraform files'"
+    instance: 3
+    depends_on: ["Detect IaC Tools"]
+    timeout: 180
+
+  - name: "Terraform Plan"
+    directory: "."
+    command: "terraform init -backend=false && terraform plan -out=tfplan || echo 'No Terraform files'"
+    instance: 4
+    depends_on: ["Terraform Validate"]
+    timeout: 300
+
+  - name: "TFLint"
+    directory: "."
+    command: "tflint --init && tflint || echo 'TFLint not available'"
+    instance: 5
+    depends_on: ["Terraform Validate"]
+    timeout: 180
+
+  # Stage 3: Terraform Security (parallel)
+  - name: "TFSec Security Scan"
+    directory: "."
+    command: "tfsec . --format json --out tfsec-report.json || echo 'TFSec not available'"
+    instance: 6
+    depends_on: ["Terraform Validate"]
+    timeout: 180
+
+  - name: "Checkov Scan"
+    directory: "."
+    command: "checkov -d . --framework terraform --output json --output-file checkov-report.json || echo 'Checkov not available'"
+    instance: 7
+    depends_on: ["Terraform Validate"]
+    timeout: 300
+
+  # Stage 4: Ansible Validation (if applicable)
+  - name: "Ansible Lint"
+    directory: "."
+    command: "ansible-lint **/*.yml || echo 'No Ansible playbooks'"
+    instance: 8
+    depends_on: ["Detect IaC Tools"]
+    timeout: 180
+
+  - name: "Ansible Syntax Check"
+    directory: "."
+    command: |
+      find . -name "*.yml" -type f -exec ansible-playbook --syntax-check {} \\; || echo 'No Ansible playbooks'
+    instance: 9
+    depends_on: ["Detect IaC Tools"]
+    timeout: 180
+
+  # Stage 5: Kubernetes Validation (if applicable)
+  - name: "Kubernetes Lint"
+    directory: "."
+    command: "kubectl apply --dry-run=client --validate=true -f k8s/ || echo 'No K8s manifests'"
+    instance: 10
+    depends_on: ["Detect IaC Tools"]
+    timeout: 120
+
+  - name: "Kubeval"
+    directory: "."
+    command: "kubeval k8s/*.yaml || echo 'Kubeval not available'"
+    depends_on: ["Detect IaC Tools"]
+    timeout: 120
+
+  - name: "Kube-score"
+    directory: "."
+    command: "kube-score score k8s/*.yaml || echo 'Kube-score not available'"
+    depends_on: ["Kubernetes Lint"]
+    timeout: 180
+
+  # Stage 6: Infrastructure Security Analysis
+  - name: "Infrastructure Security Review"
+    prompt: |
+      INFRASTRUCTURE SECURITY ANALYSIS:
+
+      **Cloud Security**:
+      1. IAM policies properly restricted
+      2. Security groups properly configured
+      3. S3 buckets not publicly accessible
+      4. Encryption at rest enabled
+      5. Encryption in transit enforced
+      6. VPC configuration secure
+      7. No hardcoded credentials
+      8. Secrets properly managed
+
+      **Kubernetes Security**:
+      1. Pod security policies defined
+      2. Network policies configured
+      3. RBAC properly configured
+      4. Resource limits set
+      5. Security contexts defined
+      6. Image pull policies secure
+      7. No privileged containers
+      8. Service accounts properly used
+
+      **General**:
+      1. No default credentials
+      2. Least privilege principle
+      3. Logging enabled
+      4. Monitoring configured
+      5. Backup policies defined
+      6. Disaster recovery plan
+    depends_on: ["Detect IaC Tools"]
+    timeout: 300
+
+  # Stage 7: Cost & Compliance
+  - name: "Infrastructure Cost Analysis"
+    prompt: |
+      INFRASTRUCTURE COST REVIEW:
+      1. Identify expensive resources
+      2. Check for unused resources
+      3. Verify auto-scaling configured
+      4. Check reserved instance usage
+      5. Review data transfer costs
+      6. Check storage tier optimization
+      7. Identify cost optimization opportunities
+    depends_on: ["Terraform Plan"]
+    timeout: 180
+
+  - name: "Compliance Check"
+    prompt: |
+      INFRASTRUCTURE COMPLIANCE:
+      1. CIS benchmarks compliance
+      2. PCI-DSS requirements (if applicable)
+      3. HIPAA requirements (if applicable)
+      4. SOC2 requirements (if applicable)
+      5. GDPR requirements (if applicable)
+      6. Logging and audit trails
+      7. Data residency requirements
+      8. Encryption requirements
+    depends_on: ["Detect IaC Tools"]
+    timeout: 300
+
+  # Stage 8: Infrastructure Best Practices
+  - name: "Infrastructure Best Practices"
+    prompt: |
+      INFRASTRUCTURE BEST PRACTICES REVIEW:
+
+      **Terraform** (if applicable):
+      1. State backend configured
+      2. State locking enabled
+      3. Workspaces used appropriately
+      4. Modules organized properly
+      5. Variables properly typed
+      6. Outputs documented
+      7. Remote state for collaboration
+      8. Terraform version pinned
+
+      **General**:
+      1. Infrastructure versioned
+      2. Change management process
+      3. Rollback procedures documented
+      4. Testing strategy defined
+      5. Documentation complete
+      6. Naming conventions consistent
+      7. Tags/labels properly used
+      8. Multi-region/AZ deployment
+
+      **Kubernetes**:
+      1. Namespaces used appropriately
+      2. Resource quotas set
+      3. Labels and selectors consistent
+      4. Health checks defined
+      5. ConfigMaps/Secrets properly used
+      6. StatefulSets vs Deployments appropriate
+      7. Service discovery configured
+      8. Ingress configured properly
+    depends_on: ["Detect IaC Tools"]
+    timeout: 300
+
+  # Stage 9: Final Report
+  - name: "Generate Infrastructure Report"
+    prompt: |
+      INFRASTRUCTURE VALIDATION COMPREHENSIVE REPORT:
+
+      **Tools Detected**:
+      - Terraform: [yes/no]
+      - Ansible: [yes/no]
+      - Kubernetes: [yes/no]
+      - CloudFormation: [yes/no]
+      - Helm: [yes/no]
+
+      **Terraform** (if applicable):
+      - Format check: [pass/fail]
+      - Validation: [pass/fail]
+      - Plan status: [success/failure]
+      - TFLint issues: [count]
+      - TFSec findings: [critical/high/medium/low]
+      - Checkov violations: [count]
+
+      **Ansible** (if applicable):
+      - Lint issues: [count]
+      - Syntax check: [pass/fail]
+      - Best practices: [score]
+
+      **Kubernetes** (if applicable):
+      - Kubeval validation: [pass/fail]
+      - Kube-score rating: [score]
+      - Security issues: [count]
+      - Best practices: [score]
+
+      **Security**:
+      - Critical issues: [count]
+      - High severity: [count]
+      - Medium severity: [count]
+      - Low severity: [count]
+      - Security score: [0-100]
+
+      **Compliance**:
+      - CIS benchmark: [pass/fail]
+      - Industry standards: [list compliance]
+      - Compliance score: [%]
+
+      **Cost Optimization**:
+      - Estimated monthly cost: [$]
+      - Cost optimization opportunities: [count]
+      - Potential savings: [$]
+
+      **Best Practices**:
+      - State management: [good/needs improvement]
+      - Module organization: [good/needs improvement]
+      - Documentation: [complete/incomplete]
+      - Naming conventions: [consistent/inconsistent]
+      - Version control: [good/needs improvement]
+
+      **Recommendations**:
+      1. [Critical fixes]
+      2. [High priority improvements]
+      3. [Cost optimizations]
+      4. [Security hardening]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Security Rating**: [A-F]
+      **Compliance Rating**: [A-F]
+      **Cost Optimization**: [A-F]
+    depends_on:
+      - "Terraform Format Check"
+      - "Terraform Validate"
+      - "Terraform Plan"
+      - "TFLint"
+      - "TFSec Security Scan"
+      - "Checkov Scan"
+      - "Ansible Lint"
+      - "Ansible Syntax Check"
+      - "Kubernetes Lint"
+      - "Kubeval"
+      - "Kube-score"
+      - "Infrastructure Security Review"
+      - "Infrastructure Cost Analysis"
+      - "Compliance Check"
+      - "Infrastructure Best Practices"
+    priority: high
+
+# INFRASTRUCTURE PIPELINE NOTES:
+# - Install required tools: terraform, tflint, tfsec, checkov
+# - Configure cloud provider credentials (AWS/Azure/GCP)
+# - Use terraform workspaces for environments
+# - Store state remotely (S3, Azure Storage, etc.)
+# - Enable state locking
+# - Use modules for reusable infrastructure
+# - Implement proper tagging strategy
+# - Document architecture decisions
+# - Test infrastructure changes in dev/staging first
+# - Implement automated rollback procedures

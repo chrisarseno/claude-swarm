@@ -1,0 +1,151 @@
+# Emergency Hotfix Deployment
+# CRITICAL: Use for production emergencies only
+# Streamlined pipeline prioritizing speed while maintaining safety
+
+name: "Emergency Hotfix Deployment"
+instances: 6
+priority: critical
+
+tasks:
+  # Stage 1: Immediate Assessment
+  - name: "Assess Emergency"
+    prompt: |
+      EMERGENCY ASSESSMENT:
+      1. Analyze the critical issue that requires a hotfix
+      2. Determine severity (P0 outage, P1 critical, P2 urgent)
+      3. Identify affected systems/users
+      4. Estimate fix complexity
+      5. Recommend hotfix vs rollback
+
+      Provide a clear GO/NO-GO for hotfix deployment.
+    priority: critical
+    instance: 1
+    timeout: 120
+
+  # Stage 2: Fast Validation (parallel)
+  - name: "Critical Tests Only"
+    directory: "."
+    command: "npm test -- --testPathPattern=critical || pytest -m critical || go test -run Critical"
+    priority: critical
+    instance: 2
+    depends_on: ["Assess Emergency"]
+    timeout: 300
+
+  - name: "Security Quick Scan"
+    directory: "."
+    prompt: |
+      RAPID SECURITY CHECK:
+      1. Scan changed files only for obvious vulnerabilities
+      2. Check for exposed secrets or credentials
+      3. Verify authentication/authorization not bypassed
+      4. Flag any critical security concerns
+
+      This is a FAST scan - deep analysis comes later.
+    priority: critical
+    instance: 3
+    depends_on: ["Assess Emergency"]
+    timeout: 180
+
+  - name: "Syntax & Build Check"
+    directory: "."
+    command: "npm run build || go build || python -m py_compile **/*.py || cargo check"
+    priority: critical
+    instance: 4
+    depends_on: ["Assess Emergency"]
+    timeout: 180
+
+  # Stage 3: Emergency Build & Deploy
+  - name: "Emergency Build"
+    directory: "."
+    command: "npm run build:prod || make build || docker build -t app:hotfix ."
+    priority: critical
+    instance: 5
+    depends_on: ["Critical Tests Only", "Security Quick Scan", "Syntax & Build Check"]
+    timeout: 300
+
+  - name: "Deploy to Staging"
+    directory: "."
+    command: "kubectl apply -f k8s/staging/ || helm upgrade staging ./chart || ./deploy.sh staging"
+    priority: critical
+    instance: 6
+    depends_on: ["Emergency Build"]
+    timeout: 180
+
+  # Stage 4: Smoke Test
+  - name: "Staging Smoke Test"
+    prompt: |
+      SMOKE TEST STAGING:
+      1. Verify application starts
+      2. Test the specific fix
+      3. Test critical user flows
+      4. Check error logs
+      5. Verify no new errors introduced
+
+      PASS/FAIL decision for production deployment.
+    priority: critical
+    depends_on: ["Deploy to Staging"]
+    timeout: 180
+
+  # Stage 5: Production Deployment
+  - name: "Deploy to Production"
+    directory: "."
+    command: "kubectl apply -f k8s/production/ || helm upgrade production ./chart || ./deploy.sh production"
+    priority: critical
+    depends_on: ["Staging Smoke Test"]
+    timeout: 300
+
+  - name: "Production Health Check"
+    prompt: |
+      PRODUCTION HEALTH VERIFICATION:
+      1. Verify all pods/services are running
+      2. Check application health endpoint
+      3. Monitor error rates (should not spike)
+      4. Verify the fix resolved the issue
+      5. Check response times
+      6. Monitor resource usage
+
+      Continuous monitoring for next 15 minutes.
+    priority: critical
+    depends_on: ["Deploy to Production"]
+    timeout: 900
+
+  # Stage 6: Emergency Report
+  - name: "Generate Hotfix Report"
+    prompt: |
+      EMERGENCY HOTFIX REPORT:
+
+      **Issue**:
+      - What was the emergency?
+      - When did it start?
+      - Impact assessment
+
+      **Fix**:
+      - What was changed?
+      - Why this approach?
+      - Files modified
+
+      **Validation**:
+      - Tests run and results
+      - Security checks performed
+      - Staging verification
+
+      **Deployment**:
+      - Deployment time
+      - Rollback readiness
+      - Monitoring status
+
+      **Post-Mortem Actions**:
+      - Root cause analysis needed?
+      - Follow-up tasks
+      - Process improvements
+
+      **Status**: DEPLOYED / FAILED / ROLLED BACK
+    depends_on: ["Production Health Check"]
+    priority: critical
+
+# IMPORTANT NOTES:
+# 1. This workflow sacrifices completeness for speed
+# 2. Full regression testing should follow within 24 hours
+# 3. Rollback should be prepared before production deployment
+# 4. Document everything for post-mortem
+# 5. Alert on-call team at each stage

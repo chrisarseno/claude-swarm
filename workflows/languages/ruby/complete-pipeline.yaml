@@ -1,0 +1,304 @@
+# Ruby Complete Pipeline
+# Comprehensive validation for Ruby projects
+
+name: "Ruby Complete Pipeline"
+instances: 10
+
+tasks:
+  # Stage 1: Setup & Dependencies
+  - name: "Bundle Install"
+    directory: "."
+    command: "bundle install --jobs=4 --retry=3"
+    instance: 1
+    timeout: 300
+
+  - name: "Bundle Audit"
+    directory: "."
+    command: "bundle audit check --update || true"
+    instance: 2
+    depends_on: ["Bundle Install"]
+    timeout: 120
+
+  # Stage 2: Code Quality (parallel)
+  - name: "RuboCop"
+    directory: "."
+    command: "bundle exec rubocop --format progress --fail-level error"
+    instance: 3
+    depends_on: ["Bundle Install"]
+    timeout: 180
+
+  - name: "RuboCop Auto-correct Check"
+    directory: "."
+    command: "bundle exec rubocop --auto-gen-config || true"
+    instance: 4
+    depends_on: ["Bundle Install"]
+    timeout: 120
+
+  # Stage 3: Static Analysis (parallel)
+  - name: "Reek"
+    directory: "."
+    command: "bundle exec reek . || true"
+    instance: 5
+    depends_on: ["Bundle Install"]
+    timeout: 180
+
+  - name: "Brakeman Security Scan"
+    directory: "."
+    command: "bundle exec brakeman --no-pager --format json --output brakeman-report.json || true"
+    instance: 6
+    depends_on: ["Bundle Install"]
+    timeout: 180
+
+  - name: "Fasterer"
+    directory: "."
+    command: "bundle exec fasterer || true"
+    instance: 7
+    depends_on: ["Bundle Install"]
+    timeout: 120
+
+  # Stage 4: Testing (parallel)
+  - name: "RSpec Unit Tests"
+    directory: "."
+    command: "bundle exec rspec spec/unit --format documentation"
+    instance: 8
+    depends_on: ["Bundle Install"]
+    timeout: 600
+
+  - name: "RSpec Integration Tests"
+    directory: "."
+    command: "bundle exec rspec spec/integration --format documentation || true"
+    instance: 9
+    depends_on: ["Bundle Install"]
+    timeout: 900
+
+  - name: "Test Coverage"
+    directory: "."
+    command: "bundle exec rspec --format progress"
+    instance: 10
+    depends_on: ["Bundle Install"]
+    timeout: 600
+
+  # Stage 5: Additional Quality Checks
+  - name: "Rails Best Practices"
+    directory: "."
+    command: "bundle exec rails_best_practices . || true"
+    depends_on: ["Bundle Install"]
+    timeout: 180
+
+  - name: "Flay - Duplication Detection"
+    directory: "."
+    command: "bundle exec flay app lib || true"
+    depends_on: ["Bundle Install"]
+    timeout: 120
+
+  - name: "Flog - Complexity Analysis"
+    directory: "."
+    command: "bundle exec flog app lib || true"
+    depends_on: ["Bundle Install"]
+    timeout: 120
+
+  # Stage 6: Dependency Analysis
+  - name: "Bundle Outdated"
+    directory: "."
+    command: "bundle outdated || true"
+    depends_on: ["Bundle Install"]
+    timeout: 120
+
+  - name: "Dependency Analysis"
+    prompt: |
+      RUBY DEPENDENCY REVIEW:
+      1. List all gems and versions
+      2. Identify outdated gems
+      3. Check for deprecated gems
+      4. Verify semantic versioning
+      5. Check for conflicting dependencies
+      6. Identify unused gems
+      7. Check for gems with known vulnerabilities
+      8. Review gem licenses
+      9. Check for native extensions (C extensions)
+      10. Verify Ruby version compatibility
+    depends_on: ["Bundle Outdated"]
+    timeout: 180
+
+  # Stage 7: Code Quality Review
+  - name: "Ruby Best Practices"
+    prompt: |
+      RUBY CODE QUALITY ANALYSIS:
+
+      **Code Style**:
+      1. Adherence to Ruby Style Guide
+      2. Naming conventions
+      3. Method length (should be < 10 lines)
+      4. Class length (should be < 100 lines)
+      5. Parameter count (should be < 4)
+      6. Line length (should be < 120 chars)
+
+      **Code Smells**:
+      1. Long methods
+      2. Long parameter lists
+      3. Duplicate code
+      4. Feature envy
+      5. Data clumps
+      6. God classes
+      7. Shotgun surgery
+      8. Primitive obsession
+
+      **Ruby Idioms**:
+      1. Proper use of blocks and procs
+      2. Enumerable methods usage
+      3. Symbol vs string usage
+      4. Proper exception handling
+      5. Duck typing usage
+      6. Metaprogramming appropriateness
+      7. Module usage vs inheritance
+
+      **Performance**:
+      1. N+1 query issues (if Rails/ActiveRecord)
+      2. Inefficient enumerable usage
+      3. String concatenation in loops
+      4. Unnecessary object allocations
+      5. Missing database indexes
+      6. Caching opportunities
+
+      **Rails-Specific** (if applicable):
+      1. Controller complexity
+      2. Model complexity
+      3. View logic
+      4. Strong parameters usage
+      5. CSRF protection
+      6. SQL injection prevention
+      7. Mass assignment protection
+      8. Proper use of concerns
+      9. Service objects usage
+      10. Background job usage
+
+      **Testing**:
+      1. Test coverage completeness
+      2. Test quality (not just coverage)
+      3. Factory usage vs fixtures
+      4. Test isolation
+      5. Test speed
+      6. Integration test coverage
+    depends_on: ["Bundle Install"]
+    timeout: 300
+
+  # Stage 8: Security Analysis
+  - name: "Security Review"
+    prompt: |
+      RUBY SECURITY ANALYSIS:
+      1. SQL injection vulnerabilities
+      2. XSS vulnerabilities
+      3. CSRF protection
+      4. Mass assignment vulnerabilities
+      5. Authentication implementation
+      6. Authorization implementation
+      7. Session management
+      8. Cookie security
+      9. File upload vulnerabilities
+      10. Command injection risks
+      11. Unsafe deserialization
+      12. Insecure direct object references
+      13. Security headers configuration
+      14. Secrets management
+    depends_on: ["Brakeman Security Scan"]
+    timeout: 300
+
+  # Stage 9: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      RUBY PIPELINE COMPREHENSIVE REPORT:
+
+      **Environment**:
+      - Ruby version: [version]
+      - Framework: [Rails/Sinatra/Hanami/etc]
+      - Bundler version: [version]
+
+      **Dependencies**:
+      - Total gems: [count]
+      - Outdated: [count]
+      - Vulnerabilities: [count by severity]
+      - Deprecated: [count]
+
+      **Code Style**:
+      - RuboCop offenses: [count by severity]
+      - Auto-correctable: [count]
+      - Major style issues: [list top 5]
+
+      **Code Quality**:
+      - Reek code smells: [count]
+      - Flay duplication score: [score]
+      - Flog complexity score: [average]
+      - Rails best practices violations: [count]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - Integration tests: [passed/failed] ([X/Y])
+      - Code coverage: [%]
+      - Line coverage: [%]
+      - Branch coverage: [%]
+      - Failed tests: [details]
+
+      **Security**:
+      - Bundle audit findings: [count]
+      - Brakeman warnings: [high/medium/low]
+      - SQL injection risks: [count]
+      - XSS risks: [count]
+      - CSRF protection: [enabled/disabled]
+      - Other security issues: [count]
+
+      **Performance**:
+      - Fasterer suggestions: [count]
+      - N+1 query issues: [count]
+      - Inefficient code: [count]
+      - Caching: [implemented/missing]
+
+      **Code Metrics**:
+      - Lines of code: [count]
+      - Classes: [count]
+      - Methods: [count]
+      - Average method length: [lines]
+      - Average class length: [lines]
+      - Duplication: [%]
+
+      **Best Practices**:
+      - Ruby idioms: [good/needs improvement]
+      - Rails conventions: [followed/violated]
+      - Exception handling: [good/needs improvement]
+      - Testing practices: [good/needs improvement]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Quality Gate**: [PASSED/FAILED]
+      **Security Rating**: [A-F]
+      **Code Quality**: [A-F]
+    depends_on:
+      - "Bundle Audit"
+      - "RuboCop"
+      - "RuboCop Auto-correct Check"
+      - "Reek"
+      - "Brakeman Security Scan"
+      - "Fasterer"
+      - "RSpec Unit Tests"
+      - "RSpec Integration Tests"
+      - "Test Coverage"
+      - "Rails Best Practices"
+      - "Flay - Duplication Detection"
+      - "Flog - Complexity Analysis"
+      - "Dependency Analysis"
+      - "Ruby Best Practices"
+      - "Security Review"
+    priority: high
+
+# RUBY PIPELINE NOTES:
+# - Requires Ruby 2.7+ (3.0+ recommended)
+# - Install gems: rubocop, reek, brakeman, rspec, etc.
+# - Configure .rubocop.yml for project standards
+# - Set up .reek.yml for code smell detection
+# - Use SimpleCov for coverage reports
+# - Configure RSpec in spec/spec_helper.rb
+# - For Rails: ensure database.yml configured for test env
+# - Use FactoryBot for test data
+# - Consider using guard for continuous testing

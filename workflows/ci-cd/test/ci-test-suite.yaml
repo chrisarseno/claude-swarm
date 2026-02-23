@@ -1,0 +1,346 @@
+# CI Test Suite
+# Comprehensive testing pipeline for continuous integration
+
+name: "CI Test Suite"
+instances: 12
+
+tasks:
+  # Stage 1: Test Environment Setup
+  - name: "Setup Test Environment"
+    directory: "."
+    command: |
+      echo "Setting up test environment..."
+
+      # Start required services (databases, caches, etc.)
+      docker-compose -f docker-compose.test.yml up -d || true
+
+      # Wait for services to be ready
+      sleep 10
+
+      # Verify services
+      docker ps
+    instance: 1
+    timeout: 180
+
+  # Stage 2: Unit Tests (parallel by language)
+  - name: "Run Python Unit Tests"
+    directory: "."
+    command: |
+      if [ -f "pytest.ini" ] || [ -f "pyproject.toml" ]; then
+        pytest tests/unit/ -v --tb=short --maxfail=10 \
+          --junitxml=test-results/python-unit.xml \
+          --cov=. --cov-report=xml:coverage/python.xml
+      fi
+    instance: 2
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  - name: "Run JavaScript Unit Tests"
+    directory: "."
+    command: |
+      if [ -f "package.json" ]; then
+        npm test -- --ci --coverage --maxWorkers=50% \
+          --reporters=default --reporters=jest-junit
+      fi
+    instance: 3
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  - name: "Run Java Unit Tests"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn test -Dtest=**/*Test
+      elif [ -f "build.gradle" ]; then
+        gradle test
+      fi
+    instance: 4
+    depends_on: ["Setup Test Environment"]
+    timeout: 900
+
+  - name: "Run Go Unit Tests"
+    directory: "."
+    command: |
+      if [ -f "go.mod" ]; then
+        go test ./... -v -cover -coverprofile=coverage/go.out
+      fi
+    instance: 5
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  # Stage 3: Integration Tests (parallel)
+  - name: "Run API Integration Tests"
+    directory: "."
+    command: |
+      # Run API integration tests
+      if [ -f "package.json" ]; then
+        npm run test:integration || npm run test:api
+      elif [ -f "pytest.ini" ]; then
+        pytest tests/integration/ -v --tb=short
+      elif [ -f "pom.xml" ]; then
+        mvn verify -Dtest=**/*IT
+      fi
+    instance: 6
+    depends_on: ["Setup Test Environment"]
+    timeout: 900
+
+  - name: "Run Database Integration Tests"
+    directory: "."
+    command: |
+      # Test database interactions
+      pytest tests/integration/database/ -v || \
+      npm run test:db || \
+      mvn test -Dtest=**/*DbTest
+    instance: 7
+    depends_on: ["Setup Test Environment"]
+    timeout: 900
+
+  - name: "Run External Service Integration Tests"
+    directory: "."
+    command: |
+      # Test external API integrations
+      pytest tests/integration/external/ -v || \
+      npm run test:external || \
+      go test -tags=integration ./...
+    instance: 8
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  # Stage 4: End-to-End Tests
+  - name: "Run E2E Tests"
+    directory: "."
+    command: |
+      # Run end-to-end tests
+      if command -v playwright &> /dev/null; then
+        playwright test
+      elif command -v cypress &> /dev/null; then
+        cypress run
+      elif [ -f "package.json" ]; then
+        npm run test:e2e
+      fi
+    instance: 9
+    depends_on: ["Run API Integration Tests"]
+    timeout: 1200
+
+  # Stage 5: Test Quality Analysis
+  - name: "Analyze Test Coverage"
+    prompt: |
+      TEST COVERAGE ANALYSIS:
+
+      Analyze code coverage across all tests:
+
+      **Overall Coverage**:
+      - Line coverage: [%]
+      - Branch coverage: [%]
+      - Function coverage: [%]
+
+      **Coverage by Component**:
+      - API layer: [%]
+      - Business logic: [%]
+      - Data layer: [%]
+      - Utilities: [%]
+
+      **Uncovered Areas**:
+      [List files/functions with < 80% coverage]
+
+      **Coverage Trends**:
+      - Compared to previous build: [+/- %]
+      - Compared to main branch: [+/- %]
+
+      **Quality Gate**:
+      - Overall coverage > 80%: [PASS/FAIL]
+      - New code coverage > 80%: [PASS/FAIL]
+      - No coverage decrease: [PASS/FAIL]
+
+      Recommendation: [PASS/FAIL/NEEDS IMPROVEMENT]
+    instance: 10
+    depends_on: ["Run Python Unit Tests", "Run JavaScript Unit Tests", "Run Java Unit Tests", "Run Go Unit Tests"]
+    timeout: 180
+
+  - name: "Analyze Test Quality"
+    prompt: |
+      TEST QUALITY ASSESSMENT:
+
+      **Test Statistics**:
+      - Total tests: [count]
+      - Unit tests: [count]
+      - Integration tests: [count]
+      - E2E tests: [count]
+
+      **Test Reliability**:
+      - Flaky tests detected: [count]
+      - Tests with retries: [count]
+      - Consistently failing: [count]
+
+      **Test Performance**:
+      - Total test time: [minutes]
+      - Slowest tests (top 10): [list]
+      - Tests > 10s: [count]
+
+      **Test Maintenance**:
+      - Skipped tests: [count]
+      - Pending/TODO tests: [count]
+      - Tests without assertions: [count]
+
+      **Recommendations**:
+      1. [Fix flaky tests]
+      2. [Optimize slow tests]
+      3. [Add missing tests]
+    instance: 11
+    depends_on: ["Run E2E Tests"]
+    timeout: 180
+
+  # Stage 6: Security & Quality Checks
+  - name: "Run Security Tests"
+    directory: "."
+    command: |
+      # Run security-specific tests
+      pytest tests/security/ -v || \
+      npm run test:security || \
+      echo "No security tests configured"
+
+      # OWASP ZAP scan
+      # docker run -t owasp/zap2docker-stable zap-baseline.py -t http://localhost:8080 || true
+    instance: 12
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  - name: "Run Contract Tests"
+    directory: "."
+    command: |
+      # Run API contract tests (Pact, Spring Cloud Contract)
+      if [ -f "pact/" ]; then
+        pytest tests/contract/ -v
+      elif [ -f "pom.xml" ]; then
+        mvn verify -Dtest=**/*ContractTest
+      fi || echo "No contract tests"
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  # Stage 7: Test Cleanup
+  - name: "Cleanup Test Environment"
+    directory: "."
+    command: |
+      echo "Cleaning up test environment..."
+
+      # Stop test services
+      docker-compose -f docker-compose.test.yml down || true
+
+      # Clean test data
+      rm -rf test-data/ || true
+
+      echo "Test environment cleaned up"
+    depends_on:
+      - "Run E2E Tests"
+      - "Run Security Tests"
+      - "Run Contract Tests"
+    timeout: 120
+
+  # Stage 8: Generate Reports
+  - name: "Generate CI Test Report"
+    prompt: |
+      CI TEST SUITE COMPREHENSIVE REPORT:
+
+      **Test Execution Summary**:
+      - Total tests run: [count]
+      - Passed: [count] ([%])
+      - Failed: [count] ([%])
+      - Skipped: [count] ([%])
+      - Duration: [minutes]
+
+      **Test Results by Type**:
+
+      **Unit Tests**:
+      - Python: [passed/failed] ([X/Y])
+      - JavaScript: [passed/failed] ([X/Y])
+      - Java: [passed/failed] ([X/Y])
+      - Go: [passed/failed] ([X/Y])
+
+      **Integration Tests**:
+      - API tests: [passed/failed] ([X/Y])
+      - Database tests: [passed/failed] ([X/Y])
+      - External service tests: [passed/failed] ([X/Y])
+
+      **E2E Tests**:
+      - Browser tests: [passed/failed] ([X/Y])
+      - User flow tests: [passed/failed] ([X/Y])
+
+      **Security Tests**:
+      - Security test suite: [passed/failed] ([X/Y])
+      - Vulnerability tests: [passed/failed]
+
+      **Contract Tests**:
+      - API contracts: [passed/failed] ([X/Y])
+
+      **Code Coverage**:
+      - Overall: [%]
+      - Unit test coverage: [%]
+      - Integration test coverage: [%]
+      - Branch coverage: [%]
+      - Coverage delta: [+/- %]
+
+      **Failed Tests** (if any):
+      [List failed test names, files, and error messages]
+
+      **Flaky Tests** (if detected):
+      [List tests that passed on retry]
+
+      **Performance**:
+      - Total test time: [minutes]
+      - Slowest test suite: [name] ([time])
+      - Parallel execution efficiency: [%]
+
+      **Quality Gates**:
+      - All tests passed: [YES/NO]
+      - Coverage >= 80%: [YES/NO]
+      - No flaky tests: [YES/NO]
+      - Test time < 15 min: [YES/NO]
+
+      **Trends** (compared to previous build):
+      - Test count: [+/- count]
+      - Pass rate: [+/- %]
+      - Coverage: [+/- %]
+      - Duration: [+/- minutes]
+
+      **Test Artifacts**:
+      - Test results: [path]
+      - Coverage reports: [path]
+      - Screenshots/videos: [path]
+      - Logs: [path]
+
+      **Recommendations**:
+      1. [Fix failing tests]
+      2. [Improve test coverage]
+      3. [Optimize slow tests]
+      4. [Fix flaky tests]
+
+      **Build Status**: PASS / FAIL
+      **Quality Gate**: PASSED / FAILED
+      **Ready for Deployment**: YES / NO
+    depends_on:
+      - "Run Python Unit Tests"
+      - "Run JavaScript Unit Tests"
+      - "Run Java Unit Tests"
+      - "Run Go Unit Tests"
+      - "Run API Integration Tests"
+      - "Run Database Integration Tests"
+      - "Run External Service Integration Tests"
+      - "Run E2E Tests"
+      - "Analyze Test Coverage"
+      - "Analyze Test Quality"
+      - "Run Security Tests"
+      - "Run Contract Tests"
+      - "Cleanup Test Environment"
+    priority: high
+
+# CI TEST SUITE NOTES:
+# - Runs all test types in parallel
+# - Comprehensive coverage analysis
+# - Quality gates enforcement
+# - Fast feedback (< 15 minutes target)
+# - Handles multiple languages
+# - Generates detailed reports
+# - Integrates with CI/CD pipelines
+# - Test environment isolated
+# - Automatic cleanup
+# - Suitable for GitHub Actions, GitLab CI, Jenkins

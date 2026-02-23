@@ -1,0 +1,303 @@
+# Daily Test Suite
+# Run comprehensive test suite for continuous quality assurance
+
+name: "Daily Test Suite"
+instances: 10
+priority: normal
+
+tasks:
+  # Stage 1: Test Environment Setup
+  - name: "Setup Test Environment"
+    directory: "."
+    command: |
+      echo "Setting up test environment..."
+
+      # Export test environment variables
+      export TESTING=true
+      export ENV=test
+      export CI=true
+
+      # Start test services
+      docker-compose -f docker-compose.test.yml up -d 2>/dev/null || true
+
+      # Wait for services
+      sleep 5
+
+      echo "Test environment ready"
+    instance: 1
+    timeout: 120
+
+  # Stage 2: Unit Tests (parallel by language)
+  - name: "Run Python Tests"
+    directory: "."
+    command: |
+      if [ -f "pytest.ini" ] || [ -f "pyproject.toml" ]; then
+        echo "Running Python tests..."
+        pytest -v --tb=short --cov=. --cov-report=term --cov-report=html:htmlcov/python
+      fi
+    instance: 2
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  - name: "Run JavaScript Tests"
+    directory: "."
+    command: |
+      if [ -f "package.json" ]; then
+        echo "Running JavaScript/TypeScript tests..."
+        npm test -- --coverage --maxWorkers=50%
+      fi
+    instance: 3
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  - name: "Run Go Tests"
+    directory: "."
+    command: |
+      if [ -f "go.mod" ]; then
+        echo "Running Go tests..."
+        go test -v -cover -coverprofile=coverage.out ./...
+        go tool cover -html=coverage.out -o coverage.html
+      fi
+    instance: 4
+    depends_on: ["Setup Test Environment"]
+    timeout: 600
+
+  - name: "Run Java Tests"
+    directory: "."
+    command: |
+      if [ -f "pom.xml" ]; then
+        mvn test
+      elif [ -f "build.gradle" ]; then
+        gradle test
+      fi
+    instance: 5
+    depends_on: ["Setup Test Environment"]
+    timeout: 900
+
+  # Stage 3: Integration Tests
+  - name: "Run Integration Tests"
+    directory: "."
+    command: |
+      echo "Running integration tests..."
+
+      # Python integration tests
+      pytest tests/integration/ -v --tb=short 2>/dev/null || true
+
+      # Node.js integration tests
+      npm run test:integration 2>/dev/null || true
+
+      # Go integration tests
+      go test -tags=integration ./... 2>/dev/null || true
+
+      echo "Integration tests complete"
+    instance: 6
+    depends_on: ["Setup Test Environment"]
+    timeout: 900
+
+  # Stage 4: Test Analysis
+  - name: "Analyze Test Results"
+    prompt: |
+      DAILY TEST RESULTS ANALYSIS:
+
+      **Test Execution Summary**:
+      - Total tests run: [count]
+      - Passed: [count] ([%])
+      - Failed: [count] ([%])
+      - Skipped: [count]
+      - Duration: [minutes]
+
+      **Results by Language**:
+      - Python: [X/Y passed]
+      - JavaScript: [X/Y passed]
+      - Go: [X/Y passed]
+      - Java: [X/Y passed]
+
+      **Failed Tests**:
+      [List failed test names with error messages]
+
+      **Flaky Tests** (intermittent failures):
+      [List tests that sometimes fail]
+
+      **Slow Tests** (> 10 seconds):
+      [List with execution times]
+
+      **Coverage**:
+      - Overall coverage: [%]
+      - Python coverage: [%]
+      - JavaScript coverage: [%]
+      - Go coverage: [%]
+      - Coverage trend: [↑/↓/→]
+
+      **Quality Metrics**:
+      - Test stability: [stable/flaky/failing]
+      - Test performance: [fast/acceptable/slow]
+      - Coverage trend: [improving/stable/declining]
+
+      **Action Items**:
+      1. [Fix failing tests]
+      2. [Investigate flaky tests]
+      3. [Optimize slow tests]
+      4. [Improve coverage in weak areas]
+    instance: 7
+    depends_on: ["Run Python Tests", "Run JavaScript Tests", "Run Go Tests", "Run Java Tests", "Run Integration Tests"]
+    timeout: 180
+    priority: high
+
+  - name: "Check Code Coverage"
+    directory: "."
+    command: |
+      echo "Analyzing code coverage..."
+
+      # Combine coverage reports
+      if command -v coverage &> /dev/null; then
+        coverage combine 2>/dev/null || true
+        coverage report
+        coverage html
+      fi
+
+      # Node.js coverage
+      if [ -f "coverage/lcov.info" ]; then
+        npx nyc report --reporter=text-summary
+      fi
+
+      # Go coverage
+      if [ -f "coverage.out" ]; then
+        go tool cover -func=coverage.out
+      fi
+    instance: 8
+    depends_on: ["Run Python Tests", "Run JavaScript Tests", "Run Go Tests"]
+    timeout: 180
+
+  - name: "Identify Coverage Gaps"
+    prompt: |
+      CODE COVERAGE GAP ANALYSIS:
+
+      **Low Coverage Areas** (< 80%):
+      - Files with low coverage: [list with %]
+      - Untested functions: [list]
+      - Untested branches: [list]
+
+      **Critical Gaps**:
+      - Core business logic uncovered: [yes/no]
+      - Error handling untested: [yes/no]
+      - Security code untested: [yes/no]
+
+      **Recommendations**:
+      1. [Priority areas to test]
+      2. [Test types needed]
+      3. [Coverage improvement plan]
+
+      Coverage Status: [excellent/good/needs improvement/poor]
+    instance: 9
+    depends_on: ["Check Code Coverage"]
+    timeout: 180
+
+  # Stage 5: Cleanup
+  - name: "Cleanup Test Environment"
+    directory: "."
+    command: |
+      echo "Cleaning up test environment..."
+
+      # Stop test services
+      docker-compose -f docker-compose.test.yml down 2>/dev/null || true
+
+      # Clean temporary files
+      find . -name "*.pyc" -delete 2>/dev/null || true
+      find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+      find . -name ".pytest_cache" -type d -exec rm -rf {} + 2>/dev/null || true
+
+      echo "Cleanup complete"
+    instance: 10
+    depends_on: ["Analyze Test Results", "Identify Coverage Gaps"]
+    timeout: 120
+
+  # Stage 6: Daily Report
+  - name: "Generate Daily Test Report"
+    prompt: |
+      DAILY TEST SUITE REPORT:
+
+      **Date**: [YYYY-MM-DD]
+
+      **Executive Summary**:
+      - Overall Status: [✅ PASSING / ⚠️ ISSUES / ❌ FAILING]
+      - Test success rate: [%]
+      - Code coverage: [%]
+      - Test duration: [minutes]
+
+      **Test Results**:
+      - Total tests: [count]
+      - Passed: [count] ([%])
+      - Failed: [count] ([%])
+      - Skipped: [count]
+      - New tests: [count]
+
+      **Failed Tests**:
+      [Test name] - [Error message]
+      [Test name] - [Error message]
+
+      **Flaky Tests** (require investigation):
+      [List of intermittently failing tests]
+
+      **Performance**:
+      - Fastest suite: [name] ([time])
+      - Slowest suite: [name] ([time])
+      - Tests > 10s: [count]
+
+      **Coverage Report**:
+      - Overall: [%] (target: 80%)
+      - Python: [%]
+      - JavaScript: [%]
+      - Go: [%]
+      - Java: [%]
+      - Trend: [↑ improved / → stable / ↓ declined]
+
+      **Coverage Gaps** (< 80%):
+      - [file/module]: [%]
+      - [file/module]: [%]
+
+      **Trends** (vs yesterday):
+      - Tests: [+/- count]
+      - Pass rate: [+/- %]
+      - Coverage: [+/- %]
+      - Duration: [+/- minutes]
+
+      **Quality Metrics**:
+      - Test stability: [score/10]
+      - Code coverage: [score/10]
+      - Test performance: [score/10]
+
+      **Action Items**:
+      1. 🔴 [Fix failing tests]
+      2. 🟡 [Investigate flaky tests]
+      3. 🟢 [Add tests for uncovered code]
+      4. ⚡ [Optimize slow tests]
+
+      **Recommendations**:
+      [Specific improvement suggestions]
+
+      **Summary**:
+      [Brief assessment of test health and trends]
+
+      **Next Steps**:
+      - [ ] Address failing tests
+      - [ ] Fix flaky tests
+      - [ ] Improve coverage in [areas]
+      - [ ] Optimize test performance
+    depends_on:
+      - "Analyze Test Results"
+      - "Check Code Coverage"
+      - "Identify Coverage Gaps"
+      - "Cleanup Test Environment"
+    priority: high
+
+# DAILY TEST SUITE NOTES:
+# - Comprehensive multi-language testing
+# - Parallel test execution
+# - Coverage analysis
+# - Flaky test detection
+# - Performance monitoring
+# - Trend analysis
+# - Actionable reporting
+# - Suitable for CI/CD integration
+# - Can run on schedule (daily/nightly)
+# - Helps maintain code quality

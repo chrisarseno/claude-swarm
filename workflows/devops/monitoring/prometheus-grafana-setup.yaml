@@ -1,0 +1,669 @@
+# Prometheus and Grafana Monitoring Setup
+# Comprehensive monitoring stack deployment and configuration
+
+name: "Prometheus & Grafana Monitoring Setup"
+instances: 8
+priority: high
+
+tasks:
+  # Stage 1: Environment Assessment
+  - name: "Assess Monitoring Requirements"
+    prompt: |
+      MONITORING REQUIREMENTS ASSESSMENT:
+
+      Analyze the application and infrastructure to determine:
+
+      **Application Metrics Needed**:
+      - HTTP request metrics (rate, duration, errors)
+      - Database query performance
+      - Cache hit rates
+      - Queue depths
+      - Business metrics (signups, orders, etc.)
+
+      **Infrastructure Metrics Needed**:
+      - CPU, memory, disk usage
+      - Network I/O
+      - Container metrics
+      - Kubernetes metrics (if applicable)
+
+      **Service Discovery**:
+      - Static targets: [list]
+      - Kubernetes service discovery: [yes/no]
+      - Consul/Eureka discovery: [yes/no]
+
+      **Alerting Requirements**:
+      - Critical alerts: [list]
+      - Warning alerts: [list]
+      - On-call integration: [PagerDuty/Slack/email]
+
+      **Retention Requirements**:
+      - Short-term retention: [days]
+      - Long-term retention: [days]
+      - Storage estimate: [GB]
+
+      Provide monitoring architecture recommendation.
+    instance: 1
+    timeout: 300
+
+  # Stage 2: Install Prometheus
+  - name: "Install Prometheus"
+    directory: "."
+    command: |
+      echo "Installing Prometheus..."
+
+      if command -v kubectl &> /dev/null; then
+        # Kubernetes installation with Helm
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        helm repo update
+
+        cat > prometheus-values.yaml << 'EOF'
+      server:
+        retention: "30d"
+        persistentVolume:
+          size: 50Gi
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+
+      alertmanager:
+        enabled: true
+        persistentVolume:
+          size: 10Gi
+
+      nodeExporter:
+        enabled: true
+
+      pushgateway:
+        enabled: true
+
+      kubeStateMetrics:
+        enabled: true
+      EOF
+
+        helm install prometheus prometheus-community/prometheus \
+          -f prometheus-values.yaml \
+          --namespace monitoring \
+          --create-namespace
+
+      elif command -v docker &> /dev/null; then
+        # Docker Compose installation
+        cat > docker-compose.prometheus.yml << 'EOF'
+      version: '3.8'
+      services:
+        prometheus:
+          image: prom/prometheus:latest
+          container_name: prometheus
+          ports:
+            - "9090:9090"
+          volumes:
+            - ./prometheus.yml:/etc/prometheus/prometheus.yml
+            - prometheus-data:/prometheus
+          command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.retention.time=30d'
+          restart: unless-stopped
+
+        node-exporter:
+          image: prom/node-exporter:latest
+          container_name: node-exporter
+          ports:
+            - "9100:9100"
+          restart: unless-stopped
+
+      volumes:
+        prometheus-data:
+      EOF
+
+        docker-compose -f docker-compose.prometheus.yml up -d
+      else
+        # Binary installation
+        wget https://github.com/prometheus/prometheus/releases/download/v2.40.0/prometheus-2.40.0.linux-amd64.tar.gz
+        tar xvfz prometheus-2.40.0.linux-amd64.tar.gz
+        cd prometheus-2.40.0.linux-amd64
+        ./prometheus --config.file=prometheus.yml &
+      fi
+
+      echo "Prometheus installation complete"
+    instance: 2
+    depends_on: ["Assess Monitoring Requirements"]
+    timeout: 600
+
+  - name: "Configure Prometheus"
+    directory: "."
+    command: |
+      # Create Prometheus configuration
+      cat > prometheus.yml << 'EOF'
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+        external_labels:
+          cluster: 'production'
+          region: 'us-east-1'
+
+      alerting:
+        alertmanagers:
+          - static_configs:
+              - targets: ['localhost:9093']
+
+      rule_files:
+        - "alerts.yml"
+
+      scrape_configs:
+        # Prometheus itself
+        - job_name: 'prometheus'
+          static_configs:
+            - targets: ['localhost:9090']
+
+        # Node exporter
+        - job_name: 'node'
+          static_configs:
+            - targets: ['localhost:9100']
+
+        # Application metrics
+        - job_name: 'application'
+          static_configs:
+            - targets: ['localhost:8080']
+          metrics_path: '/metrics'
+
+        # Kubernetes pods
+        - job_name: 'kubernetes-pods'
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+              action: keep
+              regex: true
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+              action: replace
+              target_label: __metrics_path__
+              regex: (.+)
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+              action: replace
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: $1:$2
+              target_label: __address__
+      EOF
+
+      # Apply configuration
+      if command -v kubectl &> /dev/null; then
+        kubectl create configmap prometheus-config \
+          --from-file=prometheus.yml \
+          -n monitoring \
+          --dry-run=client -o yaml | kubectl apply -f -
+      fi
+
+      echo "Prometheus configured"
+    instance: 3
+    depends_on: ["Install Prometheus"]
+    timeout: 180
+
+  # Stage 3: Install Grafana
+  - name: "Install Grafana"
+    directory: "."
+    command: |
+      echo "Installing Grafana..."
+
+      if command -v kubectl &> /dev/null; then
+        # Kubernetes installation
+        helm repo add grafana https://grafana.github.io/helm-charts
+        helm repo update
+
+        cat > grafana-values.yaml << 'EOF'
+      adminPassword: "changeme"
+
+      persistence:
+        enabled: true
+        size: 10Gi
+
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+
+      datasources:
+        datasources.yaml:
+          apiVersion: 1
+          datasources:
+            - name: Prometheus
+              type: prometheus
+              url: http://prometheus-server
+              access: proxy
+              isDefault: true
+
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers:
+            - name: 'default'
+              orgId: 1
+              folder: ''
+              type: file
+              disableDeletion: false
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards
+
+      service:
+        type: LoadBalancer
+      EOF
+
+        helm install grafana grafana/grafana \
+          -f grafana-values.yaml \
+          --namespace monitoring
+
+      elif command -v docker &> /dev/null; then
+        # Docker installation
+        cat >> docker-compose.prometheus.yml << 'EOF'
+        grafana:
+          image: grafana/grafana:latest
+          container_name: grafana
+          ports:
+            - "3000:3000"
+          environment:
+            - GF_SECURITY_ADMIN_PASSWORD=changeme
+          volumes:
+            - grafana-data:/var/lib/grafana
+            - ./grafana/provisioning:/etc/grafana/provisioning
+          restart: unless-stopped
+
+      volumes:
+        grafana-data:
+      EOF
+
+        docker-compose -f docker-compose.prometheus.yml up -d grafana
+      fi
+
+      echo "Grafana installation complete"
+    instance: 4
+    depends_on: ["Configure Prometheus"]
+    timeout: 600
+
+  - name: "Configure Grafana Dashboards"
+    directory: "."
+    command: |
+      mkdir -p grafana/dashboards
+
+      # Create system dashboard
+      cat > grafana/dashboards/system.json << 'EOF'
+      {
+        "dashboard": {
+          "title": "System Overview",
+          "panels": [
+            {
+              "title": "CPU Usage",
+              "targets": [
+                {
+                  "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+                }
+              ],
+              "type": "graph"
+            },
+            {
+              "title": "Memory Usage",
+              "targets": [
+                {
+                  "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100"
+                }
+              ],
+              "type": "graph"
+            },
+            {
+              "title": "Disk Usage",
+              "targets": [
+                {
+                  "expr": "100 - ((node_filesystem_avail_bytes{mountpoint=\"/\"} * 100) / node_filesystem_size_bytes{mountpoint=\"/\"})"
+                }
+              ],
+              "type": "gauge"
+            }
+          ]
+        }
+      }
+      EOF
+
+      # Create application dashboard
+      cat > grafana/dashboards/application.json << 'EOF'
+      {
+        "dashboard": {
+          "title": "Application Metrics",
+          "panels": [
+            {
+              "title": "Request Rate",
+              "targets": [
+                {
+                  "expr": "rate(http_requests_total[5m])"
+                }
+              ],
+              "type": "graph"
+            },
+            {
+              "title": "Error Rate",
+              "targets": [
+                {
+                  "expr": "rate(http_requests_total{status=~\"5..\"}[5m])"
+                }
+              ],
+              "type": "graph"
+            },
+            {
+              "title": "Response Time (p99)",
+              "targets": [
+                {
+                  "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))"
+                }
+              ],
+              "type": "graph"
+            }
+          ]
+        }
+      }
+      EOF
+
+      echo "Dashboards configured"
+    instance: 5
+    depends_on: ["Install Grafana"]
+    timeout: 180
+
+  # Stage 4: Setup Alerting
+  - name: "Configure Alertmanager"
+    directory: "."
+    command: |
+      cat > alerts.yml << 'EOF'
+      groups:
+        - name: critical_alerts
+          interval: 30s
+          rules:
+            - alert: InstanceDown
+              expr: up == 0
+              for: 5m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Instance {{ $labels.instance }} down"
+                description: "{{ $labels.instance }} has been down for more than 5 minutes"
+
+            - alert: HighCPUUsage
+              expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+              for: 10m
+              labels:
+                severity: warning
+              annotations:
+                summary: "High CPU usage on {{ $labels.instance }}"
+                description: "CPU usage is above 80% for 10 minutes"
+
+            - alert: HighMemoryUsage
+              expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+              for: 10m
+              labels:
+                severity: critical
+              annotations:
+                summary: "High memory usage on {{ $labels.instance }}"
+                description: "Memory usage is above 90%"
+
+            - alert: DiskSpaceLow
+              expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/"} * 100) / node_filesystem_size_bytes{mountpoint="/"}) > 85
+              for: 10m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Disk space low on {{ $labels.instance }}"
+                description: "Disk usage is above 85%"
+
+            - alert: HighErrorRate
+              expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+              for: 5m
+              labels:
+                severity: critical
+              annotations:
+                summary: "High error rate detected"
+                description: "Error rate is above 5%"
+      EOF
+
+      cat > alertmanager.yml << 'EOF'
+      global:
+        resolve_timeout: 5m
+
+      route:
+        group_by: ['alertname', 'cluster']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 12h
+        receiver: 'default'
+        routes:
+          - match:
+              severity: critical
+            receiver: pagerduty
+          - match:
+              severity: warning
+            receiver: slack
+
+      receivers:
+        - name: 'default'
+          email_configs:
+            - to: 'team@example.com'
+
+        - name: 'slack'
+          slack_configs:
+            - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+              channel: '#alerts'
+
+        - name: 'pagerduty'
+          pagerduty_configs:
+            - service_key: 'YOUR_PAGERDUTY_KEY'
+      EOF
+
+      if command -v kubectl &> /dev/null; then
+        kubectl create configmap alertmanager-config \
+          --from-file=alertmanager.yml \
+          -n monitoring \
+          --dry-run=client -o yaml | kubectl apply -f -
+      fi
+
+      echo "Alerting configured"
+    instance: 6
+    depends_on: ["Configure Grafana Dashboards"]
+    timeout: 180
+
+  # Stage 5: Instrumentation Guide
+  - name: "Generate Instrumentation Guide"
+    prompt: |
+      APPLICATION INSTRUMENTATION GUIDE:
+
+      Provide code examples for instrumenting applications:
+
+      **For Python (Flask/FastAPI)**:
+      ```python
+      from prometheus_client import Counter, Histogram, generate_latest
+
+      request_count = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
+      request_duration = Histogram('http_request_duration_seconds', 'HTTP request duration')
+
+      @app.middleware("http")
+      async def metrics_middleware(request, call_next):
+          with request_duration.time():
+              response = await call_next(request)
+          request_count.labels(request.method, request.url.path, response.status_code).inc()
+          return response
+
+      @app.get("/metrics")
+      def metrics():
+          return Response(generate_latest(), media_type="text/plain")
+      ```
+
+      **For Node.js (Express)**:
+      ```javascript
+      const prometheus = require('prom-client');
+
+      const httpRequestDuration = new prometheus.Histogram({
+        name: 'http_request_duration_seconds',
+        help: 'Duration of HTTP requests in seconds',
+        labelNames: ['method', 'route', 'status']
+      });
+
+      app.use((req, res, next) => {
+        const start = Date.now();
+        res.on('finish', () => {
+          const duration = (Date.now() - start) / 1000;
+          httpRequestDuration.labels(req.method, req.route?.path || req.path, res.statusCode).observe(duration);
+        });
+        next();
+      });
+
+      app.get('/metrics', (req, res) => {
+        res.set('Content-Type', prometheus.register.contentType);
+        res.end(prometheus.register.metrics());
+      });
+      ```
+
+      **For Go**:
+      ```go
+      import "github.com/prometheus/client_golang/prometheus/promhttp"
+
+      http.Handle("/metrics", promhttp.Handler())
+      ```
+
+      **For Java (Spring Boot)**:
+      ```xml
+      <dependency>
+          <groupId>io.micrometer</groupId>
+          <artifactId>micrometer-registry-prometheus</artifactId>
+      </dependency>
+      ```
+
+      Save instrumentation examples to documentation.
+    instance: 7
+    depends_on: ["Configure Alertmanager"]
+    timeout: 180
+
+  # Stage 6: Verify Installation
+  - name: "Verify Monitoring Stack"
+    directory: "."
+    command: |
+      echo "Verifying monitoring stack..."
+
+      # Check Prometheus
+      curl -f http://localhost:9090/-/healthy || echo "Prometheus not healthy"
+      curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets | length'
+
+      # Check Grafana
+      curl -f http://localhost:3000/api/health || echo "Grafana not healthy"
+
+      # Check metrics endpoint
+      curl -s http://localhost:9090/metrics | head -20
+
+      echo "Verification complete"
+    instance: 8
+    depends_on: ["Generate Instrumentation Guide"]
+    timeout: 180
+
+  # Stage 7: Final Report
+  - name: "Generate Setup Report"
+    prompt: |
+      MONITORING SETUP COMPREHENSIVE REPORT:
+
+      **Installation Summary**:
+      - Prometheus version: [version]
+      - Grafana version: [version]
+      - Alertmanager: [installed/not installed]
+      - Node Exporter: [installed/not installed]
+
+      **Prometheus Configuration**:
+      - Scrape interval: [seconds]
+      - Retention period: [days]
+      - Storage location: [path]
+      - Targets configured: [count]
+      - Service discovery: [type]
+
+      **Grafana Configuration**:
+      - Admin URL: http://localhost:3000
+      - Default credentials: admin / changeme (CHANGE THIS!)
+      - Datasources: [list]
+      - Dashboards installed: [count]
+
+      **Dashboards**:
+      - System Overview: CPU, Memory, Disk, Network
+      - Application Metrics: Requests, Errors, Latency
+      - Database Metrics: Queries, Connections, Performance
+      - Custom dashboards: [list]
+
+      **Alerting**:
+      - Alert rules configured: [count]
+      - Critical alerts: [list]
+      - Warning alerts: [list]
+      - Notification channels:
+        - Email: [configured/not configured]
+        - Slack: [configured/not configured]
+        - PagerDuty: [configured/not configured]
+
+      **Metrics Collection**:
+      - Application instrumented: [yes/no]
+      - Metrics endpoint: [URL]
+      - Custom metrics: [list]
+
+      **Access Information**:
+      - Prometheus UI: http://localhost:9090
+      - Grafana UI: http://localhost:3000
+      - Alertmanager UI: http://localhost:9093
+
+      **Next Steps**:
+      1. [ ] Change Grafana admin password
+      2. [ ] Configure Slack/PagerDuty integration
+      3. [ ] Instrument application with metrics
+      4. [ ] Import community dashboards
+      5. [ ] Set up long-term storage (Thanos/Cortex)
+      6. [ ] Configure authentication (OAuth/LDAP)
+      7. [ ] Set up backup for Grafana dashboards
+      8. [ ] Test alerting channels
+      9. [ ] Create runbooks for alerts
+      10. [ ] Train team on dashboard usage
+
+      **Security Reminders**:
+      - [ ] Change default passwords
+      - [ ] Enable HTTPS
+      - [ ] Configure firewall rules
+      - [ ] Set up authentication
+      - [ ] Restrict metrics endpoints
+
+      **Monitoring Best Practices**:
+      1. Use the RED method (Rate, Errors, Duration)
+      2. Use the USE method (Utilization, Saturation, Errors) for resources
+      3. Set up SLIs and SLOs
+      4. Create meaningful alert thresholds
+      5. Avoid alert fatigue
+      6. Document alert runbooks
+
+      **Documentation Links**:
+      - Instrumentation guide: [path]
+      - Alert runbooks: [path]
+      - Dashboard guide: [path]
+
+      **Final Status**: SUCCESS / PARTIAL / FAILED
+      **Production Ready**: YES / NO
+    depends_on:
+      - "Assess Monitoring Requirements"
+      - "Install Prometheus"
+      - "Configure Prometheus"
+      - "Install Grafana"
+      - "Configure Grafana Dashboards"
+      - "Configure Alertmanager"
+      - "Generate Instrumentation Guide"
+      - "Verify Monitoring Stack"
+    priority: high
+
+# PROMETHEUS & GRAFANA SETUP NOTES:
+# - Complete monitoring stack installation
+# - Supports Kubernetes and Docker deployments
+# - Pre-configured dashboards and alerts
+# - Application instrumentation guide
+# - Alerting to multiple channels
+# - Best practices included
+# - Security considerations
+# - Production-ready configuration
+# - Extensible and customizable

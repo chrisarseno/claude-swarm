@@ -1,0 +1,304 @@
+# PHP Complete Pipeline
+# Comprehensive validation for PHP projects
+
+name: "PHP Complete Pipeline"
+instances: 11
+
+tasks:
+  # Stage 1: Setup & Dependencies
+  - name: "Composer Install"
+    directory: "."
+    command: "composer install --no-interaction --prefer-dist --optimize-autoloader"
+    instance: 1
+    timeout: 300
+
+  - name: "Composer Validate"
+    directory: "."
+    command: "composer validate --strict"
+    instance: 2
+    depends_on: ["Composer Install"]
+    timeout: 60
+
+  # Stage 2: Code Quality (parallel)
+  - name: "PHP CodeSniffer"
+    directory: "."
+    command: "vendor/bin/phpcs --standard=PSR12 --report=summary . || true"
+    instance: 3
+    depends_on: ["Composer Install"]
+    timeout: 180
+
+  - name: "PHP CS Fixer"
+    directory: "."
+    command: "vendor/bin/php-cs-fixer fix --dry-run --diff --verbose || true"
+    instance: 4
+    depends_on: ["Composer Install"]
+    timeout: 180
+
+  - name: "PHPMD"
+    directory: "."
+    command: "vendor/bin/phpmd . text cleancode,codesize,controversial,design,naming,unusedcode || true"
+    instance: 5
+    depends_on: ["Composer Install"]
+    timeout: 180
+
+  # Stage 3: Static Analysis (parallel)
+  - name: "PHPStan"
+    directory: "."
+    command: "vendor/bin/phpstan analyse --level=max --error-format=table . || true"
+    instance: 6
+    depends_on: ["Composer Install"]
+    timeout: 300
+
+  - name: "Psalm"
+    directory: "."
+    command: "vendor/bin/psalm --show-info=true --output-format=compact || true"
+    instance: 7
+    depends_on: ["Composer Install"]
+    timeout: 300
+
+  - name: "Phan"
+    directory: "."
+    command: "vendor/bin/phan --output-mode=text || true"
+    instance: 8
+    depends_on: ["Composer Install"]
+    timeout: 180
+
+  # Stage 4: Security Scanning
+  - name: "Security Checker"
+    directory: "."
+    command: "composer audit || true"
+    instance: 9
+    depends_on: ["Composer Install"]
+    timeout: 120
+
+  - name: "PHP Security Analysis"
+    prompt: |
+      PHP SECURITY REVIEW:
+      1. Check for SQL injection vulnerabilities
+      2. Verify prepared statements usage
+      3. Check for XSS vulnerabilities
+      4. Review file upload handling
+      5. Check for command injection
+      6. Verify CSRF protection
+      7. Check session management
+      8. Review password hashing (bcrypt/argon2)
+      9. Check for insecure random generation
+      10. Verify input validation
+      11. Check for directory traversal
+      12. Review error handling (no info leaks)
+    instance: 10
+    depends_on: ["Composer Install"]
+    timeout: 300
+
+  # Stage 5: Testing (parallel)
+  - name: "PHPUnit Tests"
+    directory: "."
+    command: "vendor/bin/phpunit --testsuite=unit --coverage-text"
+    instance: 11
+    depends_on: ["Composer Install"]
+    timeout: 600
+
+  - name: "Integration Tests"
+    directory: "."
+    command: "vendor/bin/phpunit --testsuite=integration --no-coverage || true"
+    depends_on: ["Composer Install"]
+    timeout: 900
+
+  - name: "Test Coverage Report"
+    directory: "."
+    command: "vendor/bin/phpunit --coverage-html coverage/ --coverage-clover coverage.xml"
+    depends_on: ["PHPUnit Tests"]
+    timeout: 600
+
+  # Stage 6: Code Metrics
+  - name: "PHP Metrics"
+    directory: "."
+    command: "vendor/bin/phpmetrics --report-html=metrics/ . || true"
+    depends_on: ["Composer Install"]
+    timeout: 180
+
+  - name: "PHP LOC"
+    directory: "."
+    command: "vendor/bin/phploc . || true"
+    depends_on: ["Composer Install"]
+    timeout: 60
+
+  # Stage 7: Dependency Analysis
+  - name: "Composer Outdated"
+    directory: "."
+    command: "composer outdated --direct || true"
+    depends_on: ["Composer Install"]
+    timeout: 120
+
+  - name: "Dependency Analysis"
+    prompt: |
+      PHP DEPENDENCY REVIEW:
+      1. List all packages and versions
+      2. Identify outdated packages
+      3. Check for abandoned packages
+      4. Verify semantic versioning constraints
+      5. Check for dev dependencies in production
+      6. Identify version conflicts
+      7. Check for large dependencies
+      8. Verify autoload optimization
+      9. Check PSR compliance
+    depends_on: ["Composer Outdated"]
+    timeout: 180
+
+  # Stage 8: Code Quality Review
+  - name: "PHP Best Practices"
+    prompt: |
+      PHP CODE QUALITY ANALYSIS:
+
+      **Complexity**:
+      1. Classes > 500 lines
+      2. Methods > 50 lines
+      3. Cyclomatic complexity > 10
+      4. Deep nesting (>4 levels)
+      5. Long parameter lists (>5 params)
+
+      **PSR Compliance**:
+      1. PSR-1 (Basic Coding Standard)
+      2. PSR-2/PSR-12 (Coding Style)
+      3. PSR-4 (Autoloading)
+      4. PSR-7 (HTTP Message)
+      5. PSR-11 (Container)
+
+      **Best Practices**:
+      1. Type declarations usage
+      2. Return type declarations
+      3. Strict types declaration
+      4. Proper error handling
+      5. Interface usage
+      6. Dependency injection
+      7. Singleton anti-pattern avoidance
+      8. Global state usage
+
+      **Modern PHP Features**:
+      1. PHP 8+ features usage
+      2. Attributes (annotations)
+      3. Named arguments
+      4. Match expressions
+      5. Nullsafe operator
+      6. Constructor property promotion
+      7. Union types
+      8. Mixed type
+
+      **Performance**:
+      1. Unnecessary database queries
+      2. N+1 query problems
+      3. Missing indexes
+      4. Inefficient loops
+      5. Memory usage issues
+      6. Caching implementation
+    depends_on: ["Composer Install"]
+    timeout: 300
+
+  # Stage 9: Final Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      PHP PIPELINE COMPREHENSIVE REPORT:
+
+      **Environment**:
+      - PHP version: [version]
+      - Framework: [Laravel/Symfony/etc or vanilla]
+      - Composer version: [version]
+
+      **Dependencies**:
+      - Total packages: [count]
+      - Outdated: [count]
+      - Abandoned: [count]
+      - Security advisories: [count]
+      - Dev dependencies: [count]
+
+      **Code Style**:
+      - PHPCS violations: [count]
+      - PHP CS Fixer issues: [count]
+      - PSR compliance: [PSR-1/2/4/12]
+
+      **Static Analysis**:
+      - PHPStan level: [level] - [errors]
+      - Psalm issues: [count]
+      - Phan issues: [count]
+      - PHPMD violations: [count]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - Integration tests: [passed/failed] ([X/Y])
+      - Code coverage: [%]
+      - Line coverage: [%]
+      - Branch coverage: [%]
+      - Failed tests: [details]
+
+      **Security**:
+      - Composer audit: [vulnerabilities count]
+      - SQL injection risks: [count]
+      - XSS vulnerabilities: [count]
+      - Security issues: [count]
+      - Password hashing: [secure/insecure]
+      - CSRF protection: [implemented/missing]
+
+      **Code Metrics**:
+      - Lines of code: [count]
+      - Classes: [count]
+      - Methods: [count]
+      - Functions: [count]
+      - Cyclomatic complexity: [average]
+      - Maintainability index: [score]
+
+      **Code Quality**:
+      - Complexity violations: [count]
+      - Code smells: [count]
+      - Technical debt: [hours]
+      - Duplication: [%]
+
+      **Best Practices**:
+      - Type declarations: [%]
+      - Return types: [%]
+      - Strict types: [enabled/disabled]
+      - Error handling: [assessment]
+      - Dependency injection: [used/not used]
+      - Modern PHP features: [assessment]
+
+      **Performance**:
+      - N+1 queries: [count]
+      - Missing indexes: [count]
+      - Memory issues: [count]
+      - Caching: [implemented/missing]
+
+      **Recommendations**:
+      1. [Priority improvements]
+
+      **Final Verdict**: PASS/FAIL
+      **Production Ready**: YES/NO
+      **Quality Gate**: [PASSED/FAILED]
+      **Security Rating**: [A-F]
+      **PSR Compliance**: [%]
+    depends_on:
+      - "Composer Validate"
+      - "PHP CodeSniffer"
+      - "PHP CS Fixer"
+      - "PHPMD"
+      - "PHPStan"
+      - "Psalm"
+      - "Phan"
+      - "Security Checker"
+      - "PHP Security Analysis"
+      - "PHPUnit Tests"
+      - "Integration Tests"
+      - "Test Coverage Report"
+      - "PHP Metrics"
+      - "Dependency Analysis"
+      - "PHP Best Practices"
+    priority: high
+
+# PHP PIPELINE NOTES:
+# - Requires PHP 8.0+ for modern features
+# - Install tools via composer require --dev
+# - Configure phpunit.xml for test suites
+# - Set up phpstan.neon for configuration
+# - Use .php-cs-fixer.php for custom rules
+# - Configure phpmd ruleset
+# - Enable opcache for production
+# - Use strict_types=1 in all files
+# - Implement proper dependency injection

@@ -1,0 +1,229 @@
+# Multi-Database Testing
+# Test application against multiple database engines
+
+name: "Multi-Database Testing Suite"
+instances: 8
+
+tasks:
+  # Stage 1: Setup Databases (parallel)
+  - name: "Setup PostgreSQL"
+    directory: "."
+    command: |
+      docker run -d --name test-postgres \
+        -e POSTGRES_PASSWORD=testpass \
+        -e POSTGRES_DB=testdb \
+        -p 5432:5432 \
+        postgres:latest
+    instance: 1
+    timeout: 120
+
+  - name: "Setup MySQL"
+    directory: "."
+    command: |
+      docker run -d --name test-mysql \
+        -e MYSQL_ROOT_PASSWORD=testpass \
+        -e MYSQL_DATABASE=testdb \
+        -p 3306:3306 \
+        mysql:latest
+    instance: 2
+    timeout: 120
+
+  - name: "Setup SQLite"
+    directory: "."
+    command: "mkdir -p test-db && touch test-db/test.sqlite3"
+    instance: 3
+    timeout: 30
+
+  - name: "Setup MongoDB"
+    directory: "."
+    command: |
+      docker run -d --name test-mongo \
+        -e MONGO_INITDB_DATABASE=testdb \
+        -p 27017:27017 \
+        mongo:latest
+    instance: 4
+    timeout: 120
+
+  - name: "Setup Redis"
+    directory: "."
+    command: |
+      docker run -d --name test-redis \
+        -p 6379:6379 \
+        redis:latest
+    instance: 5
+    timeout: 60
+
+  # Stage 2: Run Migrations (parallel)
+  - name: "Migrate PostgreSQL"
+    directory: "."
+    command: |
+      export DATABASE_URL=postgresql://postgres:testpass@localhost:5432/testdb
+      npm run migrate || alembic upgrade head || flyway migrate
+    instance: 1
+    depends_on: ["Setup PostgreSQL"]
+    timeout: 180
+
+  - name: "Migrate MySQL"
+    directory: "."
+    command: |
+      export DATABASE_URL=mysql://root:testpass@localhost:3306/testdb
+      npm run migrate || alembic upgrade head || flyway migrate
+    instance: 2
+    depends_on: ["Setup MySQL"]
+    timeout: 180
+
+  - name: "Migrate SQLite"
+    directory: "."
+    command: |
+      export DATABASE_URL=sqlite:///test-db/test.sqlite3
+      npm run migrate || alembic upgrade head
+    instance: 3
+    depends_on: ["Setup SQLite"]
+    timeout: 120
+
+  # Stage 3: Run Tests (parallel)
+  - name: "Test PostgreSQL"
+    directory: "."
+    command: |
+      export DATABASE_URL=postgresql://postgres:testpass@localhost:5432/testdb
+      npm test || pytest || go test ./...
+    instance: 1
+    depends_on: ["Migrate PostgreSQL"]
+    timeout: 600
+
+  - name: "Test MySQL"
+    directory: "."
+    command: |
+      export DATABASE_URL=mysql://root:testpass@localhost:3306/testdb
+      npm test || pytest || go test ./...
+    instance: 2
+    depends_on: ["Migrate MySQL"]
+    timeout: 600
+
+  - name: "Test SQLite"
+    directory: "."
+    command: |
+      export DATABASE_URL=sqlite:///test-db/test.sqlite3
+      npm test || pytest || go test ./...
+    instance: 3
+    depends_on: ["Migrate SQLite"]
+    timeout: 600
+
+  - name: "Test MongoDB"
+    directory: "."
+    command: |
+      export MONGODB_URL=mongodb://localhost:27017/testdb
+      npm test || pytest -m mongodb || go test -tags=mongodb ./...
+    instance: 4
+    depends_on: ["Setup MongoDB"]
+    timeout: 600
+
+  - name: "Test Redis"
+    directory: "."
+    command: |
+      export REDIS_URL=redis://localhost:6379
+      npm test -- --testPathPattern=redis || pytest -m redis
+    instance: 5
+    depends_on: ["Setup Redis"]
+    timeout: 300
+
+  # Stage 4: Performance Testing (parallel)
+  - name: "Benchmark PostgreSQL"
+    directory: "."
+    command: |
+      export DATABASE_URL=postgresql://postgres:testpass@localhost:5432/testdb
+      npm run benchmark || pytest --benchmark-only
+    instance: 6
+    depends_on: ["Test PostgreSQL"]
+    timeout: 300
+
+  - name: "Benchmark MySQL"
+    directory: "."
+    command: |
+      export DATABASE_URL=mysql://root:testpass@localhost:3306/testdb
+      npm run benchmark || pytest --benchmark-only
+    instance: 7
+    depends_on: ["Test MySQL"]
+    timeout: 300
+
+  - name: "Benchmark SQLite"
+    directory: "."
+    command: |
+      export DATABASE_URL=sqlite:///test-db/test.sqlite3
+      npm run benchmark || pytest --benchmark-only
+    instance: 8
+    depends_on: ["Test SQLite"]
+    timeout: 300
+
+  # Stage 5: Verification & Analysis
+  - name: "Database Compatibility Analysis"
+    prompt: |
+      CROSS-DATABASE COMPATIBILITY REPORT:
+
+      **Test Results**:
+      - PostgreSQL: [passed/failed] - [X/Y tests]
+      - MySQL: [passed/failed] - [X/Y tests]
+      - SQLite: [passed/failed] - [X/Y tests]
+      - MongoDB: [passed/failed] - [X/Y tests]
+      - Redis: [passed/failed] - [X/Y tests]
+
+      **Migration Success**:
+      - PostgreSQL: [status]
+      - MySQL: [status]
+      - SQLite: [status]
+
+      **Performance Comparison**:
+      Database | Query Speed | Write Speed | Read Speed
+      ---------|-------------|-------------|------------
+      PostgreSQL | [ms] | [ms] | [ms]
+      MySQL | [ms] | [ms] | [ms]
+      SQLite | [ms] | [ms] | [ms]
+
+      **Compatibility Issues**:
+      [List any database-specific issues found]
+
+      **Database-Specific Features Used**:
+      [List features that may not be portable]
+
+      **Recommendations**:
+      1. Primary database recommendation: [database] because [reasons]
+      2. Abstraction improvements needed: [list]
+      3. Query optimizations: [list]
+      4. Migration improvements: [list]
+
+      **Production Readiness**:
+      - PostgreSQL: READY / NOT READY
+      - MySQL: READY / NOT READY
+      - SQLite: READY / NOT READY
+      - MongoDB: READY / NOT READY
+      - Redis: READY / NOT READY
+    depends_on:
+      - "Test PostgreSQL"
+      - "Test MySQL"
+      - "Test SQLite"
+      - "Test MongoDB"
+      - "Test Redis"
+      - "Benchmark PostgreSQL"
+      - "Benchmark MySQL"
+      - "Benchmark SQLite"
+    priority: high
+
+  # Stage 6: Cleanup
+  - name: "Cleanup Databases"
+    directory: "."
+    command: |
+      docker stop test-postgres test-mysql test-mongo test-redis || true
+      docker rm test-postgres test-mysql test-mongo test-redis || true
+      rm -rf test-db
+    depends_on: ["Database Compatibility Analysis"]
+    timeout: 60
+
+# MULTI-DATABASE TESTING NOTES:
+# - Ensure docker is running before starting
+# - Tests should use database abstraction layer
+# - Avoid database-specific SQL
+# - Test both ORM and raw queries
+# - Check for connection leaks
+# - Verify transaction handling
+# - Test connection pooling
+# - Check migration rollback compatibility

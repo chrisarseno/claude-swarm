@@ -1,0 +1,186 @@
+# Comprehensive Security Scan
+# Deep security analysis across multiple vectors
+
+name: "Comprehensive Security Scan"
+instances: 10
+
+tasks:
+  # Stage 1: Static Analysis Security Testing (SAST)
+  - name: "SAST - Bandit (Python)"
+    directory: "."
+    command: "bandit -r . -f json -o bandit-report.json || true"
+    instance: 1
+    timeout: 300
+
+  - name: "SAST - Semgrep"
+    directory: "."
+    command: "semgrep --config=auto --json --output=semgrep-report.json . || true"
+    instance: 2
+    timeout: 300
+
+  - name: "SAST - CodeQL"
+    directory: "."
+    prompt: "Run CodeQL analysis if available. Check for: SQL injection, XSS, command injection, path traversal, insecure deserialization."
+    instance: 3
+    timeout: 600
+
+  # Stage 2: Dependency Scanning
+  - name: "NPM Audit"
+    directory: "."
+    command: "npm audit --json || true"
+    instance: 4
+    timeout: 180
+
+  - name: "Python Safety Check"
+    directory: "."
+    command: "safety check --json || pip-audit --format json || true"
+    instance: 5
+    timeout: 180
+
+  - name: "Snyk Vulnerability Scan"
+    directory: "."
+    command: "snyk test --json || true"
+    instance: 6
+    timeout: 300
+
+  # Stage 3: Secret Detection
+  - name: "Secret Scanning - TruffleHog"
+    directory: "."
+    command: "trufflehog filesystem . --json || true"
+    instance: 7
+    timeout: 300
+
+  - name: "Secret Scanning - GitLeaks"
+    directory: "."
+    command: "gitleaks detect --source . --report-format json --report-path gitleaks-report.json || true"
+    instance: 8
+    timeout: 180
+
+  # Stage 4: Container & Infrastructure
+  - name: "Trivy Container Scan"
+    directory: "."
+    command: "trivy fs --format json --output trivy-report.json . || true"
+    instance: 9
+    timeout: 300
+
+  - name: "Infrastructure Security"
+    prompt: |
+      INFRASTRUCTURE SECURITY CHECK:
+      1. Scan Terraform files for misconfigurations
+      2. Check Kubernetes manifests for security issues
+      3. Review Docker configurations
+      4. Check for exposed ports/services
+      5. Verify network policies
+      6. Review IAM policies/permissions
+    instance: 10
+    timeout: 300
+
+  # Stage 5: Analysis & Reporting
+  - name: "Security Analysis"
+    prompt: |
+      COMPREHENSIVE SECURITY ANALYSIS:
+
+      Analyze all security scan results and categorize findings:
+
+      **CRITICAL (P0) - Immediate Action Required**:
+      - Remote code execution
+      - SQL injection
+      - Authentication bypass
+      - Exposed secrets/credentials
+      - Known exploited vulnerabilities
+
+      **HIGH (P1) - Fix Within 24 Hours**:
+      - XSS vulnerabilities
+      - CSRF issues
+      - Insecure deserialization
+      - Path traversal
+      - High severity CVEs
+
+      **MEDIUM (P2) - Fix Within 1 Week**:
+      - Information disclosure
+      - Weak cryptography
+      - Medium severity CVEs
+      - Security misconfigurations
+
+      **LOW (P3) - Fix When Possible**:
+      - Code quality issues
+      - Best practice violations
+      - Low severity CVEs
+
+      **FALSE POSITIVES**:
+      - List likely false positives with reasoning
+
+      For each finding, provide:
+      - Description
+      - Location (file:line)
+      - Severity
+      - Exploit scenario
+      - Remediation steps
+      - References (CVE, CWE, OWASP)
+    depends_on:
+      - "SAST - Bandit (Python)"
+      - "SAST - Semgrep"
+      - "SAST - CodeQL"
+      - "NPM Audit"
+      - "Python Safety Check"
+      - "Snyk Vulnerability Scan"
+      - "Secret Scanning - TruffleHog"
+      - "Secret Scanning - GitLeaks"
+      - "Trivy Container Scan"
+      - "Infrastructure Security"
+    priority: critical
+    timeout: 600
+
+  - name: "Generate Security Report"
+    prompt: |
+      SECURITY SCAN SUMMARY REPORT:
+
+      **Executive Summary**:
+      - Total issues found
+      - Breakdown by severity (Critical/High/Medium/Low)
+      - Most critical findings (top 5)
+      - Compliance status
+      - Overall risk rating (Critical/High/Medium/Low)
+
+      **Detailed Findings**:
+      [Include all categorized findings from Security Analysis]
+
+      **Remediation Priority**:
+      1. [Ordered list of what to fix first]
+
+      **Compliance Check**:
+      - OWASP Top 10 coverage
+      - CWE Top 25 coverage
+      - SANS Top 25 coverage
+      - Industry-specific requirements (HIPAA/PCI/SOC2 if applicable)
+
+      **Trend Analysis**:
+      - Compare to previous scan (if available)
+      - New vulnerabilities introduced
+      - Fixed vulnerabilities
+
+      **Recommendations**:
+      - Security improvements
+      - Tool additions
+      - Process improvements
+      - Training needs
+
+      **Action Items**:
+      - Immediate: [Critical issues]
+      - Short-term: [High issues]
+      - Long-term: [Medium/Low issues]
+
+      **SECURITY CLEARANCE**: PASS / FAIL / CONDITIONAL
+      - If FAIL: Block deployment
+      - If CONDITIONAL: List requirements before deployment
+    depends_on: ["Security Analysis"]
+    priority: critical
+
+# SECURITY SCAN NOTES:
+# - Run this before every production deployment
+# - Run weekly on main branch
+# - Run on every PR for changed files
+# - Critical findings block deployment
+# - High findings require security team review
+# - Keep security reports confidential
+# - Schedule remediation within SLA

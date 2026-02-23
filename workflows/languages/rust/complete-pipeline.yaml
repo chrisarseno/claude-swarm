@@ -1,0 +1,209 @@
+# Rust Complete Pipeline
+# Comprehensive validation for Rust projects
+
+name: "Rust Complete Pipeline"
+instances: 10
+
+tasks:
+  # Stage 1: Setup
+  - name: "Update Toolchain"
+    directory: "."
+    command: "rustup update stable"
+    instance: 1
+    timeout: 120
+
+  # Stage 2: Formatting & Linting (parallel)
+  - name: "Rustfmt Check"
+    directory: "."
+    command: "cargo fmt -- --check"
+    instance: 2
+    depends_on: ["Update Toolchain"]
+    timeout: 120
+
+  - name: "Clippy Linting"
+    directory: "."
+    command: "cargo clippy --all-targets --all-features -- -D warnings"
+    instance: 3
+    depends_on: ["Update Toolchain"]
+    timeout: 300
+
+  - name: "Cargo Check"
+    directory: "."
+    command: "cargo check --all-targets --all-features"
+    instance: 4
+    depends_on: ["Update Toolchain"]
+    timeout: 300
+
+  # Stage 3: Security Audit
+  - name: "Cargo Audit"
+    directory: "."
+    command: "cargo audit || true"
+    instance: 5
+    depends_on: ["Update Toolchain"]
+    timeout: 180
+
+  - name: "Cargo Deny"
+    directory: "."
+    command: "cargo deny check || true"
+    instance: 6
+    depends_on: ["Update Toolchain"]
+    timeout: 180
+
+  # Stage 4: Testing (parallel)
+  - name: "Unit Tests"
+    directory: "."
+    command: "cargo test --lib"
+    instance: 7
+    depends_on: ["Cargo Check", "Clippy Linting"]
+    timeout: 600
+
+  - name: "Integration Tests"
+    directory: "."
+    command: "cargo test --tests"
+    instance: 8
+    depends_on: ["Cargo Check", "Clippy Linting"]
+    timeout: 600
+
+  - name: "Doc Tests"
+    directory: "."
+    command: "cargo test --doc"
+    instance: 9
+    depends_on: ["Cargo Check"]
+    timeout: 300
+
+  # Stage 5: Benchmarks & Performance
+  - name: "Benchmark Tests"
+    directory: "."
+    command: "cargo bench --no-run"
+    instance: 10
+    depends_on: ["Unit Tests"]
+    timeout: 600
+
+  - name: "Build Optimized"
+    directory: "."
+    command: "cargo build --release"
+    depends_on: ["Unit Tests", "Integration Tests"]
+    timeout: 900
+
+  # Stage 6: Advanced Checks
+  - name: "Memory Safety Check"
+    prompt: |
+      RUST MEMORY SAFETY ANALYSIS:
+      1. Check for unsafe blocks usage
+      2. Verify unsafe is justified with comments
+      3. Review lifetime annotations
+      4. Check for memory leaks in tests
+      5. Verify proper Drop implementations
+      6. Review Send/Sync implementations
+      7. Check for potential panics (unwrap/expect)
+    depends_on: ["Unit Tests"]
+    timeout: 180
+
+  - name: "Dependency Analysis"
+    directory: "."
+    command: "cargo tree && cargo outdated || true"
+    depends_on: ["Update Toolchain"]
+    timeout: 180
+
+  - name: "Documentation Generation"
+    directory: "."
+    command: "cargo doc --no-deps --document-private-items"
+    depends_on: ["Doc Tests"]
+    timeout: 300
+
+  - name: "Binary Size Analysis"
+    directory: "."
+    prompt: |
+      BINARY SIZE ANALYSIS:
+      1. Check release binary size
+      2. Compare with previous builds
+      3. Identify large dependencies
+      4. Check for unnecessary features
+      5. Verify stripping is applied
+      6. Analyze compilation units
+
+      Flag if binary size increased significantly.
+    depends_on: ["Build Optimized"]
+    timeout: 120
+
+  # Stage 7: Report
+  - name: "Generate Pipeline Report"
+    prompt: |
+      RUST PIPELINE COMPREHENSIVE REPORT:
+
+      **Code Quality**:
+      - rustfmt: [status]
+      - clippy warnings: [count]
+      - cargo check: [status]
+
+      **Security**:
+      - cargo audit: [vulnerabilities found]
+      - cargo deny: [license/ban violations]
+      - unsafe blocks: [count and justification]
+
+      **Testing**:
+      - Unit tests: [passed/failed] ([X/Y])
+      - Integration tests: [passed/failed] ([X/Y])
+      - Doc tests: [passed/failed] ([X/Y])
+      - Overall test coverage: [if available]
+
+      **Performance**:
+      - Benchmark status: [completed/failed]
+      - Build time: [seconds]
+      - Binary size: [MB] ([increased/decreased/same])
+
+      **Dependencies**:
+      - Direct dependencies: [count]
+      - Total dependencies: [count]
+      - Outdated: [count]
+      - Security advisories: [count]
+
+      **Documentation**:
+      - Documentation completeness: [%]
+      - Examples present: YES/NO
+      - README quality: [assessment]
+
+      **Memory Safety**:
+      - Unsafe usage: [justified/unjustified]
+      - Potential panics: [count]
+      - Lifetime issues: [count]
+
+      **Build**:
+      - Debug build: [status]
+      - Release build: [status]
+      - Build warnings: [count]
+
+      **Best Practices**:
+      - Error handling: [assessment]
+      - API design: [assessment]
+      - Idiomatic Rust: [assessment]
+
+      **Final Verdict**: PASS/FAIL
+      **Safety Rating**: [Safe/Needs Review/Unsafe]
+      **Production Ready**: YES/NO
+      **Recommendations**: [List improvements]
+    depends_on:
+      - "Rustfmt Check"
+      - "Clippy Linting"
+      - "Cargo Check"
+      - "Cargo Audit"
+      - "Cargo Deny"
+      - "Unit Tests"
+      - "Integration Tests"
+      - "Doc Tests"
+      - "Benchmark Tests"
+      - "Build Optimized"
+      - "Memory Safety Check"
+      - "Dependency Analysis"
+      - "Documentation Generation"
+      - "Binary Size Analysis"
+    priority: high
+
+# RUST PIPELINE NOTES:
+# - Rust enforces memory safety at compile time
+# - Pay special attention to unsafe blocks
+# - Ensure all public APIs are documented
+# - Keep dependencies minimal
+# - Use cargo-outdated for dependency updates
+# - Run miri for additional safety checks (optional)
+# - Consider using cargo-geiger for unsafe detection

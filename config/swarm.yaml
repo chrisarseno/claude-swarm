@@ -1,0 +1,91 @@
+# Claude Swarm Configuration
+
+swarm:
+  # Maximum number of concurrent instances
+  max_instances: 8
+
+  # Default timeout for tasks in seconds (10 min for code reviews)
+  default_timeout: 600
+
+  # Root workspace directory - point at c-suite project
+  workspace_root: "./workspace"
+
+  # Execution backend: "claude" or "ollama"
+  backend: "ollama"
+
+  # Claude Code CLI command (used when backend=claude)
+  claude_command: "claude"
+
+  # Ollama settings (used when backend=ollama)
+  ollama_url: "http://localhost:11434"
+  ollama_model: "qwen2.5:14b"
+
+  # Model selection preferences
+  models:
+    # Preferred models in priority order (tried first)
+    preferred:
+      - "qwen2.5:14b"
+      - "devstral:24b"
+    # Fallback model if preferred unavailable
+    fallback: "qwen2.5:7b"
+    # Let router automatically pick best model per task
+    auto_select: true
+
+  # ── Multi-backend endpoints ────────────────────────────────
+  # Each backend is an independent inference endpoint.
+  # The router picks the best (backend, model) pair per task.
+  # Add remote machines, extra GPUs, or cloud APIs here.
+  backends:
+    - name: "local"
+      type: "ollama"
+      url: "http://localhost:11434"
+      models: ["qwen2.5:14b"]
+      max_concurrent: 1        # single GPU → one at a time
+      priority: 0
+
+    # ── Examples (uncomment to enable) ──
+    # - name: "gpu1"
+    #   type: "ollama"
+    #   url: "http://localhost:11435"
+    #   models: ["devstral:24b"]
+    #   max_concurrent: 1
+    #   priority: 0
+    #
+    # - name: "remote-server"
+    #   type: "ollama"
+    #   url: "http://192.168.1.50:11434"
+    #   models: ["llama3.1:70b", "qwen2.5:14b"]
+    #   max_concurrent: 2
+    #   priority: 1
+    #
+    # - name: "cloud-claude"
+    #   type: "claude"
+    #   url: ""
+    #   api_key: "${ANTHROPIC_API_KEY}"
+    #   models: ["claude"]
+    #   max_concurrent: 4
+    #   priority: 10            # highest priority for complex tasks
+
+api:
+  # API server host
+  host: "0.0.0.0"
+
+  # API server port
+  port: 8766
+
+  # Enable WebSocket support for real-time updates
+  enable_websocket: true
+
+  # CORS allowed origins (use ["*"] for development only)
+  cors_origins:
+    - "*"
+
+logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR)
+  level: "INFO"
+
+  # Log file path (null for stdout only)
+  file: "logs/swarm.log"
+
+  # Use JSON format for logs
+  json_logs: false

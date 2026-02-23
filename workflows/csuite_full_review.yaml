@@ -1,0 +1,96 @@
+name: "C-Suite Full Codebase Review"
+instances: 8
+
+tasks:
+  # Track 1: Core Framework
+  - name: "Review Core Framework"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough code review of src/csuite/core/ - the core framework.
+      Review base.py (CSuiteAgent, Manager, Specialist hierarchy), decisions/,
+      plugins/, queue/, webhooks/, and all facade files. Check for: correctness,
+      error handling, thread safety, async patterns, type annotations, edge cases,
+      and adherence to SOLID principles. Report all bugs, issues, and improvements found.
+    instance: 1
+
+  # Track 2: All 16 Executive Agents
+  - name: "Review Executive Agents"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough code review of src/csuite/agents/ - all 16 executive agents
+      (CoS, CTO, CFO, CMO, CIO, CPO, CRO, CDO, CEngO, CSecO, CCO, CSO, CRevO,
+      CRiO, CCoMO, COO) plus the bridges/ directory. Check each agent for:
+      proper inheritance from Manager/Specialist, correct personality profiles,
+      delegation logic, error handling, and consistency across all agents.
+      Report all bugs, issues, and improvements found.
+    instance: 2
+
+  # Track 3: Learning System
+  - name: "Review Learning System"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough code review of src/csuite/learning/ - the entire learning system.
+      Review all 11 facades in facades/, the orchestrator.py, learning loops in loops/,
+      and the continuous_pipeline.py (9 phases including METACOGNITION at 5.5).
+      Check for: correctness, async patterns, state management, pipeline ordering,
+      error recovery, and bounded collections. Report all bugs, issues, and improvements.
+    instance: 3
+
+  # Track 4: Modules (metacognition, workbench, distributed, etc.)
+  - name: "Review Modules"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough code review of src/csuite/modules/ - all domain modules including
+      metacognition/ (personality.py, heuristics.py, reflection.py, service.py),
+      workbench/, distributed/, vls/, scheduler/, commerce/, trends/, brand/,
+      and the 4 stub modules (research_automation, data_harvesting, security_automation,
+      distributed_orchestration). Check the module registry in __init__.py.
+      Report all bugs, issues, and improvements found.
+    instance: 4
+
+  # Track 5: Integrations
+  - name: "Review Integrations"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough code review of src/csuite/integrations/ - all 16 integration
+      categories (communication, business, data, social, vector, voice, etc.).
+      Check for: consistent interface patterns, proper error handling, credential
+      management, timeout handling, retry logic, and API safety. Check for any
+      hardcoded secrets or credentials. Report all bugs, issues, and improvements found.
+    instance: 5
+
+  # Track 6: API, Orchestration, and Tools
+  - name: "Review API and Orchestration"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough code review of src/csuite/api/ (20 files - REST endpoints),
+      src/csuite/orchestration/ (24 files - workflow engine, definitions, factory),
+      and src/csuite/tools/ (17 files). Check for: OWASP vulnerabilities (injection,
+      XSS, auth bypass), proper input validation, correct async patterns, error
+      responses, and workflow correctness. Report all bugs, issues, and improvements.
+    instance: 6
+
+  # Track 7: Persistence, Security, LLM, and MCP
+  - name: "Review Persistence and Infrastructure"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough code review of src/csuite/persistence/ (18 files - database
+      and state), src/csuite/security/ (5 files), src/csuite/llm/ (12 files - LLM
+      integrations), src/csuite/mcp/ (4 files), src/csuite/observability/ (4 files),
+      and src/csuite/models/ (4 files). Check for: SQL injection, proper connection
+      handling, state corruption, LLM prompt injection risks, and logging of
+      sensitive data. Report all bugs, issues, and improvements found.
+    instance: 7
+
+  # Track 8: GUI, Tests, and Cross-Cutting Concerns
+  - name: "Review GUI and Test Coverage"
+    directory: "./workspace"
+    prompt: >
+      Perform a thorough review of: 1) src/csuite/gui/ (4 files - GUI panels including
+      TrendPanel, CoherencePanel, TeamLearningPanel, TraitMapPanel), 2) tests/unit/
+      directory - check test coverage, test quality, and whether all 16 agents have
+      adequate tests, 3) Cross-cutting concerns: check imports across the entire
+      src/csuite/ for circular dependencies, check __init__.py files for correct
+      exports, and verify the structured logging pattern (get_logger) is used
+      consistently. Report all bugs, issues, and improvements found.
+    instance: 8

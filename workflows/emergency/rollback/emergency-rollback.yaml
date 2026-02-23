@@ -1,0 +1,168 @@
+# Emergency Rollback
+# CRITICAL: Immediate rollback for failed deployments or critical issues
+
+name: "Emergency Rollback"
+instances: 5
+priority: critical
+
+tasks:
+  # Stage 1: Immediate Actions
+  - name: "Stop Current Deployment"
+    directory: "."
+    command: |
+      kubectl rollout pause deployment/app || \
+      helm rollback production || \
+      docker service update --rollback app || \
+      systemctl stop app
+    priority: critical
+    instance: 1
+    timeout: 60
+
+  - name: "Capture Current State"
+    prompt: |
+      CAPTURE FAILURE STATE:
+      1. Collect current error logs (last 1000 lines)
+      2. Capture current metrics/stats
+      3. Screenshot monitoring dashboards
+      4. Record current version/commit
+      5. Note time of rollback initiation
+
+      Save all evidence for post-mortem analysis.
+    priority: critical
+    instance: 2
+    timeout: 120
+
+  # Stage 2: Rollback Execution (parallel preparation)
+  - name: "Identify Last Known Good Version"
+    prompt: |
+      DETERMINE ROLLBACK TARGET:
+      1. Find last successful deployment
+      2. Verify that version is stable
+      3. Check deployment history
+      4. Confirm rollback target version
+      5. Verify artifacts are available
+
+      Provide version number and deployment timestamp.
+    priority: critical
+    instance: 3
+    depends_on: ["Stop Current Deployment"]
+    timeout: 60
+
+  - name: "Prepare Rollback"
+    directory: "."
+    command: |
+      # Kubernetes
+      kubectl rollout undo deployment/app || \
+      # Helm
+      helm rollback production 0 || \
+      # Docker Swarm
+      docker service rollback app || \
+      # Manual
+      git checkout $(git describe --tags --abbrev=0 @^)
+    priority: critical
+    instance: 4
+    depends_on: ["Identify Last Known Good Version"]
+    timeout: 120
+
+  # Stage 3: Execute Rollback
+  - name: "Execute Rollback"
+    directory: "."
+    command: |
+      kubectl rollout status deployment/app || \
+      helm status production || \
+      docker service ps app || \
+      systemctl start app
+    priority: critical
+    instance: 5
+    depends_on: ["Prepare Rollback"]
+    timeout: 300
+
+  # Stage 4: Verification
+  - name: "Verify Rollback Success"
+    prompt: |
+      ROLLBACK VERIFICATION:
+      1. Check all services are running
+      2. Verify health endpoints respond
+      3. Test critical user flows
+      4. Check error rates (should decrease)
+      5. Verify the original issue is mitigated
+      6. Monitor for any new issues
+      7. Check database connections
+      8. Verify external integrations
+
+      STATUS: SUCCESSFUL / FAILED / PARTIAL
+
+      If failed, recommend next steps.
+    priority: critical
+    depends_on: ["Execute Rollback"]
+    timeout: 180
+
+  - name: "Monitor Post-Rollback"
+    prompt: |
+      CONTINUOUS MONITORING (15 minutes):
+      1. Error rate trends
+      2. Response time metrics
+      3. Resource utilization
+      4. User traffic patterns
+      5. Database performance
+      6. Cache hit rates
+      7. External API calls
+
+      Alert if any metrics are abnormal.
+    priority: critical
+    depends_on: ["Verify Rollback Success"]
+    timeout: 900
+
+  # Stage 5: Incident Report
+  - name: "Generate Rollback Report"
+    prompt: |
+      EMERGENCY ROLLBACK REPORT:
+
+      **Incident Details**:
+      - What triggered the rollback?
+      - When was the issue detected?
+      - Impact: Users affected, duration, severity
+
+      **Rollback Execution**:
+      - Rollback initiated at: [timestamp]
+      - Rolled back from: [version]
+      - Rolled back to: [version]
+      - Rollback completed at: [timestamp]
+      - Total downtime: [duration]
+
+      **Current Status**:
+      - System health: [status]
+      - All services operational: YES/NO
+      - Error rates: [current vs baseline]
+      - Performance: [current vs baseline]
+
+      **Evidence Collected**:
+      - Logs captured
+      - Metrics saved
+      - Screenshots taken
+
+      **Next Steps**:
+      1. Post-mortem meeting scheduling
+      2. Root cause analysis
+      3. Fix development
+      4. Testing requirements
+      5. Re-deployment plan
+
+      **Stakeholder Notifications**:
+      - Engineering team: [notified/not notified]
+      - Product team: [notified/not notified]
+      - Customer support: [notified/not notified]
+      - Customers: [notified/not notified]
+
+      **Final Status**: STABLE / MONITORING / INVESTIGATING
+    depends_on: ["Monitor Post-Rollback"]
+    priority: critical
+
+# CRITICAL PROCEDURES:
+# 1. Always capture state before rollback
+# 2. Verify rollback target is stable
+# 3. Monitor continuously after rollback
+# 4. Document everything
+# 5. Notify all stakeholders
+# 6. Schedule post-mortem within 24 hours
+# 7. Block similar deployments until root cause is fixed

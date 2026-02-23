@@ -7,7 +7,7 @@ swarm:
   # Default timeout for tasks in seconds (10 min for code reviews)
   default_timeout: 600
 
-  # Root workspace directory - point at c-suite project
+  # Root workspace directory
   workspace_root: "./workspace"
 
   # Execution backend: "claude" or "ollama"

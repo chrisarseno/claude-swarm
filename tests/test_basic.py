@@ -144,7 +144,7 @@ class TestConfig:
 
         assert config.swarm.max_instances == 10
         assert config.swarm.default_timeout == 300
-        assert config.api.port == 8765
+        assert config.api.port == 8766
         assert config.logging.level == "INFO"
 
     def test_config_from_dict(self):

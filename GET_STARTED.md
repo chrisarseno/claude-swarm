@@ -58,7 +58,7 @@ python scripts/cli.py instances
 python scripts/start_swarm.py
 ```
 
-Visit http://localhost:8765/docs for interactive API documentation.
+Visit http://localhost:8766/docs for interactive API documentation.
 
 ### Step 4: Try a Workflow
 
@@ -75,7 +75,7 @@ Your web UI can communicate with Claude Swarm via the API:
 
 ```javascript
 // Submit a task
-const response = await fetch('http://localhost:8765/tasks', {
+const response = await fetch('http://localhost:8766/tasks', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -87,14 +87,14 @@ const response = await fetch('http://localhost:8765/tasks', {
 const { task_id } = await response.json();
 
 // Check status
-const status = await fetch(`http://localhost:8765/tasks/${task_id}`);
+const status = await fetch(`http://localhost:8766/tasks/${task_id}`);
 const task = await status.json();
 ```
 
 ### Option 2: WebSocket (Real-time)
 
 ```javascript
-const ws = new WebSocket('ws://localhost:8765/ws/stream');
+const ws = new WebSocket('ws://localhost:8766/ws/stream');
 
 ws.onmessage = (event) => {
   const status = JSON.parse(event.data);
@@ -136,7 +136,7 @@ swarm:
 
 api:
   host: "0.0.0.0"
-  port: 8765  # Change if needed
+  port: 8766  # Change if needed
 
 logging:
   level: "INFO"  # DEBUG for more detail
@@ -267,7 +267,7 @@ swarm:
 **Solution**:
 1. Ensure server is running: `python scripts/start_swarm.py`
 2. Check firewall settings
-3. Verify port is not in use: `netstat -ano | findstr :8765`
+3. Verify port is not in use: `netstat -ano | findstr :8766`
 
 ## Documentation
 
@@ -279,8 +279,8 @@ swarm:
 ## API Documentation
 
 Once the server is running:
-- **Interactive Docs**: http://localhost:8765/docs
-- **ReDoc**: http://localhost:8765/redoc
+- **Interactive Docs**: http://localhost:8766/docs
+- **ReDoc**: http://localhost:8766/redoc
 
 ## Tips for Success
 

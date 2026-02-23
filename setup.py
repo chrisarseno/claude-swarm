@@ -23,7 +23,7 @@ setup(
     description="Multi-instance orchestration for Claude Code",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Claude Swarm Contributors",
+    author="Chris Arseno",
     license="AGPL-3.0-or-later",
     python_requires=">=3.10",
     packages=find_packages(where="src"),

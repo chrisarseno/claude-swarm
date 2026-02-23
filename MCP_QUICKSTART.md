@@ -2,18 +2,37 @@
 
 # Using Claude Swarm via MCP - 2 Minute Guide
 
-Claude Swarm is now available as a tool in Claude Code! No need to run separate servers or manage APIs - just ask Claude to use it.
+Use Claude Swarm as a tool directly in Claude Code sessions.
 
-## ✅ Setup Status
+## Setup
 
-**The MCP server is already registered!** It was added to:
+### Step 1: Install Claude Swarm
+
+```bash
+cd claude-swarm
+pip install -r requirements.txt
+pip install -e .
 ```
-~/.claude/mcp_settings.json
+
+### Step 2: Register the MCP Server
+
+Add to `~/.claude/mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "claude-swarm": {
+      "command": "python",
+      "args": ["-m", "swarm.mcp_server"],
+      "cwd": "/path/to/claude-swarm"
+    }
+  }
+}
 ```
 
-## 🎯 Try It Now
+Replace `/path/to/claude-swarm` with your actual clone path.
 
-### Step 1: Start a New Claude Session
+### Step 3: Start a New Claude Session
 
 Open a new terminal and run:
 ```bash
@@ -193,7 +212,7 @@ You can modify:
 - **Full MCP Guide**: [MCP_INTEGRATION.md](MCP_INTEGRATION.md)
 - **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Examples**: [examples/](examples/)
-- **API Docs**: Start server and visit http://localhost:8765/docs
+- **API Docs**: Start server and visit http://localhost:8766/docs
 
 ## 🎉 That's It!
 

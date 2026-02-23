@@ -1,15 +1,40 @@
 # Claude Swarm MCP Integration
 
-Claude Swarm is now registered as an MCP (Model Context Protocol) server! This means you can use it directly from any Claude Code session as a built-in tool.
+Claude Swarm can be registered as an MCP (Model Context Protocol) server, allowing you to use it directly from any Claude Code session as a built-in tool.
 
-## ✅ Installation Complete
+## Setup
 
-The MCP server has been registered in your Claude configuration:
-- **Location**: `~/.claude/mcp_settings.json`
-- **Server Name**: `claude-swarm`
-- **Status**: Ready to use
+### 1. Install Claude Swarm
 
-## 🎯 How to Use
+```bash
+cd claude-swarm
+pip install -r requirements.txt
+pip install -e .
+```
+
+### 2. Register the MCP Server
+
+Add the following to your Claude MCP settings file (`~/.claude/mcp_settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "claude-swarm": {
+      "command": "python",
+      "args": ["-m", "swarm.mcp_server"],
+      "cwd": "/path/to/claude-swarm"
+    }
+  }
+}
+```
+
+Replace `/path/to/claude-swarm` with the actual path to your clone.
+
+### 3. Restart Claude Code
+
+Start a new Claude Code session for the MCP server to become available.
+
+## How to Use
 
 ### In Any Claude Code Session
 
@@ -209,11 +234,9 @@ Claude will:
 2. Call `swarm_list_tasks` with status filters
 3. Format and present the information
 
-## 🔄 Restart Required?
+## Verify Installation
 
-**No!** The MCP server is registered and will be available the next time you start a Claude Code session. No restart needed if you're reading this in the same session where it was set up.
-
-To test it immediately:
+After registering the MCP server and starting a new Claude Code session:
 1. Open a new terminal
 2. Run `claude`
 3. Ask: "Can you show me the swarm status?"
@@ -299,14 +322,14 @@ Then ask Claude:
 ### Integration with Your Web UI
 
 The swarm also runs an API server. Your web UI can:
-1. Use the API directly (`http://localhost:8765`)
+1. Use the API directly (`http://localhost:8766`)
 2. Monitor via WebSocket
 3. Submit tasks programmatically
 
 ## 📚 Learn More
 
 - **Architecture**: See `ARCHITECTURE.md`
-- **API Reference**: Run server and visit `http://localhost:8765/docs`
+- **API Reference**: Run server and visit `http://localhost:8766/docs`
 - **Examples**: Check `examples/` directory
 - **Quickstart**: See `QUICKSTART.md`
 

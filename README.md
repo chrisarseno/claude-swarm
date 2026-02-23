@@ -17,7 +17,9 @@ A powerful orchestration system for managing multiple Claude Code instances simu
 
 ## 🚀 Use in Claude Code (MCP Integration)
 
-**Claude Swarm is now registered as an MCP server!** You can use it directly in any Claude Code session:
+Claude Swarm can be registered as an MCP server so you can use it directly in any Claude Code session. See [MCP_QUICKSTART.md](MCP_QUICKSTART.md) for setup instructions.
+
+Once configured, try:
 
 ```
 "Spawn 3 swarm instances and analyze these in parallel:
@@ -117,7 +119,7 @@ tasks:
 
 ### WebSocket
 
-- `ws://localhost:8765/stream` - Real-time instance output and events
+- `ws://localhost:8766/ws/stream` - Real-time instance output and events
 
 ## Configuration
 
@@ -131,7 +133,7 @@ swarm:
 
 api:
   host: "0.0.0.0"
-  port: 8765
+  port: 8766
   enable_websocket: true
 
 logging:

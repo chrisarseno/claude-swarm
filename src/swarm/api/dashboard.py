@@ -445,7 +445,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <h1>Claude <span>Swarm</span></h1>
         <p>Submit tasks to your swarm of AI instances. Each message becomes a task processed by your local LLM fleet.</p>
         <div class="suggestions">
-          <div class="suggestion" onclick="useSuggestion('Review the code quality and architecture of src/csuite/core/base.py')">
+          <div class="suggestion" onclick="useSuggestion('Review the code quality and architecture of src/main.py')">
             <div class="title">Code Review</div>
             <div class="desc">Review code quality and architecture of a file</div>
           </div>

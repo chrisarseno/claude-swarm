@@ -76,7 +76,7 @@ class SwarmConfig(BaseModel):
 class APIConfig(BaseModel):
     """API server configuration."""
     host: str = Field(default="0.0.0.0", description="API host")
-    port: int = Field(default=8765, description="API port")
+    port: int = Field(default=8766, description="API port")
     enable_websocket: bool = Field(default=True, description="Enable WebSocket support")
     cors_origins: list[str] = Field(default=["*"], description="CORS allowed origins")
 

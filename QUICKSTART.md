@@ -24,7 +24,7 @@ pip install -e .
 python scripts/start_swarm.py
 ```
 
-The server will start on `http://localhost:8765`. Visit `http://localhost:8765/docs` for interactive API documentation.
+The server will start on `http://localhost:8766`. Visit `http://localhost:8766/docs` for interactive API documentation.
 
 ### 2. Use the CLI
 
@@ -59,7 +59,7 @@ python scripts/cli.py workflow examples/multi_project_workflow.yaml
 
 ```bash
 # Submit a task via API
-curl -X POST http://localhost:8765/tasks \
+curl -X POST http://localhost:8766/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Review the code for performance issues",
@@ -68,13 +68,13 @@ curl -X POST http://localhost:8765/tasks \
   }'
 
 # Check status
-curl http://localhost:8765/status
+curl http://localhost:8766/status
 
 # List instances
-curl http://localhost:8765/instances
+curl http://localhost:8766/instances
 
 # List tasks
-curl http://localhost:8765/tasks
+curl http://localhost:8766/tasks
 ```
 
 ### 4. Use with Your Web UI
@@ -83,7 +83,7 @@ If you have a web UI, connect it to the API:
 
 ```javascript
 // Example: Submit a task from your web app
-const response = await fetch('http://localhost:8765/tasks', {
+const response = await fetch('http://localhost:8766/tasks', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -97,12 +97,12 @@ const result = await response.json();
 console.log('Task ID:', result.task_id);
 
 // Check task status
-const taskStatus = await fetch(`http://localhost:8765/tasks/${result.task_id}`);
+const taskStatus = await fetch(`http://localhost:8766/tasks/${result.task_id}`);
 const task = await taskStatus.json();
 console.log('Task status:', task.status);
 
 // WebSocket for real-time updates
-const ws = new WebSocket('ws://localhost:8765/ws/stream');
+const ws = new WebSocket('ws://localhost:8766/ws/stream');
 ws.onmessage = (event) => {
   const status = JSON.parse(event.data);
   console.log('Swarm status:', status);
@@ -161,7 +161,7 @@ async def automated_review():
         task_ids = []
         for task in tasks:
             response = await client.post(
-                'http://localhost:8765/tasks',
+                'http://localhost:8766/tasks',
                 json={'prompt': task, 'priority': 'high'}
             )
             task_ids.append(response.json()['task_id'])
@@ -170,7 +170,7 @@ async def automated_review():
         while True:
             all_complete = True
             for task_id in task_ids:
-                response = await client.get(f'http://localhost:8765/tasks/{task_id}')
+                response = await client.get(f'http://localhost:8766/tasks/{task_id}')
                 task = response.json()
                 if task['status'] not in ['completed', 'failed']:
                     all_complete = False

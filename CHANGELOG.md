@@ -18,4 +18,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP server integration
 - Model registry with 24 model profiles
 - Intelligent task routing with performance feedback
-- C-Suite bridge for enterprise agent integration
+- Agent bridge for enterprise agent integration

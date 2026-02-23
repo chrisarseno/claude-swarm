@@ -110,7 +110,7 @@ async def lifespan(app: FastAPI):
     orchestrator = SwarmOrchestrator(config)
     await orchestrator.start(initial_instances=1)
 
-    # Wire up the C-Suite bridge
+    # Wire up the external agent bridge
     from .csuite_bridge import set_orchestrator as set_bridge_orch
     set_bridge_orch(orchestrator)
 
@@ -131,14 +131,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
-    # Include C-Suite bridge router
+    # Include external agent bridge router
     from .csuite_bridge import router as csuite_router
     app.include_router(csuite_router)
 
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure this based on your needs
+        allow_origins=["*"],  # WARNING: Restrict this in production (e.g. ["https://yourdomain.com"])
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -454,7 +454,7 @@ def create_app() -> FastAPI:
     return app
 
 
-def start_server(host: str = "0.0.0.0", port: int = 8765, reload: bool = False):
+def start_server(host: str = "0.0.0.0", port: int = 8766, reload: bool = False):
     """Start the API server."""
     uvicorn.run(
         "swarm.api.server:create_app",

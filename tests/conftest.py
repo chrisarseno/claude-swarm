@@ -4,10 +4,17 @@ import asyncio
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from swarm.tools.base import ToolDefinition, ToolResult, ToolRegistry
 from swarm.tools.builtin import register_builtin_tools
+
+
+@pytest.fixture(autouse=True)
+def _unlock_license_gate():
+    """Patch the license gate singleton so all features are allowed during tests."""
+    with patch("swarm.licensing.license_gate.check_feature", return_value=True):
+        yield
 
 
 @pytest.fixture

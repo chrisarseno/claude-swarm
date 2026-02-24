@@ -15,6 +15,7 @@ from ..agents.model_registry import LiveModelRegistry
 from ..claude.wrapper import ClaudeCommand
 from ..utils.logger import get_logger
 from ..utils.config import Config
+from ..licensing import license_gate
 
 logger = get_logger(__name__)
 
@@ -318,6 +319,7 @@ class SwarmOrchestrator:
         priority: TaskPriority = TaskPriority.NORMAL
     ) -> list[str]:
         """Submit multiple tasks at once."""
+        license_gate.gate("std.swarm.advanced")
         task_ids = []
         for prompt in prompts:
             task_id = await self.submit_task(
@@ -332,6 +334,7 @@ class SwarmOrchestrator:
 
     async def execute_workflow(self, workflow_path: Path) -> dict[str, Any]:
         """Execute a workflow from a YAML file."""
+        license_gate.gate("std.swarm.advanced")
         logger.info("executing_workflow", path=str(workflow_path))
 
         with open(workflow_path, "r") as f:
@@ -385,6 +388,7 @@ class SwarmOrchestrator:
 
     async def scale_instances(self, target: int) -> int:
         """Scale the number of instances."""
+        license_gate.gate("std.swarm.advanced")
         current = len(self.instance_manager.instances)
         result = await self.instance_manager.scale_to(target)
         logger.info("scaled_instances", from_count=current, to_count=result, target=target)

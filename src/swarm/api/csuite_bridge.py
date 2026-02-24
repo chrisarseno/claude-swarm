@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..licensing import license_gate
+
 router = APIRouter(prefix="/bridge", tags=["csuite-bridge"])
 
 
@@ -51,6 +53,7 @@ async def submit_bridge_task(request: BridgeTaskRequest):
     The Swarm will analyze the task, route to the best model,
     and return the task ID for polling.
     """
+    license_gate.gate("std.swarm.enterprise")
     if not _orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 
@@ -92,6 +95,7 @@ async def get_outcomes(limit: int = 50):
 
     Returns recent completed tasks with their results and metadata.
     """
+    license_gate.gate("std.swarm.enterprise")
     if not _orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 
@@ -126,6 +130,7 @@ async def submit_routing_feedback(request: RoutingFeedbackRequest):
     C-Suite can report how well a model performed at a task type,
     which the Swarm uses to improve future routing decisions.
     """
+    license_gate.gate("std.swarm.enterprise")
     if not _orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 

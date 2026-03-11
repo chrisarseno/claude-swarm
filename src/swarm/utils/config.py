@@ -73,6 +73,14 @@ class SwarmConfig(BaseModel):
         return self
 
 
+class AuthConfig(BaseModel):
+    """Authentication configuration."""
+    require_auth: bool = Field(default=False, description="Require authentication for all requests")
+    zuultimate_url: str = Field(default="http://localhost:8000", description="Zuultimate identity service URL")
+    service_token: str = Field(default="", description="Service token for Swarm→Zuultimate calls")
+    cache_ttl_seconds: int = Field(default=300, description="Auth cache TTL in seconds")
+
+
 class APIConfig(BaseModel):
     """API server configuration."""
     host: str = Field(default="0.0.0.0", description="API host")
@@ -92,6 +100,7 @@ class Config(BaseSettings):
     """Main configuration model."""
     swarm: SwarmConfig = Field(default_factory=SwarmConfig)
     api: APIConfig = Field(default_factory=APIConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     class Config:

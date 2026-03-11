@@ -135,10 +135,22 @@ def create_app() -> FastAPI:
     from .csuite_bridge import router as csuite_router
     app.include_router(csuite_router)
 
+    # Add authentication middleware (must be added before CORS)
+    from .auth import ZuultimateAuthMiddleware, AuthConfig as AuthCfg
+    config_path = Path("config/swarm.yaml")
+    cfg = load_config(config_path if config_path.exists() else None)
+    auth_cfg = AuthCfg(
+        require_auth=cfg.auth.require_auth,
+        zuultimate_url=cfg.auth.zuultimate_url,
+        service_token=cfg.auth.service_token,
+        cache_ttl_seconds=cfg.auth.cache_ttl_seconds,
+    )
+    app.add_middleware(ZuultimateAuthMiddleware, auth_config=auth_cfg)
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # WARNING: Restrict this in production (e.g. ["https://yourdomain.com"])
+        allow_origins=cfg.api.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -386,7 +386,7 @@ def create_app() -> FastAPI:
         for m in models:
             profile = m.get("profile")
             entry = {
-                "name": m["name"],
+                "name": m.get("name", "unknown"),
                 "size_gb": round(m.get("size_bytes", 0) / (1024 ** 3), 2),
                 "has_profile": profile is not None,
             }
@@ -438,8 +438,10 @@ def create_app() -> FastAPI:
                 while True:
                     event = await queue.get()
                     await websocket.send_json(event)
-            except (WebSocketDisconnect, Exception):
+            except WebSocketDisconnect:
                 pass
+            except Exception as e:
+                logger.warning(f"WebSocket send_events error: {e}")
 
         async def send_status():
             """Send periodic status updates."""
@@ -449,17 +451,27 @@ def create_app() -> FastAPI:
                         status = await orchestrator.get_status()
                         await websocket.send_json({"type": "status", **status})
                     await asyncio.sleep(2)
-            except (WebSocketDisconnect, Exception):
+            except WebSocketDisconnect:
                 pass
+            except Exception as e:
+                logger.warning(f"WebSocket send_status error: {e}")
 
+        event_task = None
+        status_task = None
         try:
             event_task = asyncio.create_task(send_events())
             status_task = asyncio.create_task(send_status())
             # Wait for client disconnect
             await asyncio.gather(event_task, status_task)
-        except (WebSocketDisconnect, Exception):
+        except WebSocketDisconnect:
             pass
+        except Exception as e:
+            logger.warning(f"WebSocket handler error: {e}")
         finally:
+            if event_task and not event_task.done():
+                event_task.cancel()
+            if status_task and not status_task.done():
+                status_task.cancel()
             stream_bus.unsubscribe(queue)
             logger.info("websocket_disconnected")
 

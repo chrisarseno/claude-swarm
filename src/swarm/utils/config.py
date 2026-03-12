@@ -113,6 +113,8 @@ def load_config(config_path: Optional[Path] = None) -> "Config":
     if config_path and config_path.exists():
         with open(config_path, "r") as f:
             config_data = yaml.safe_load(f)
+            if not config_data:
+                return Config()
             return Config(**config_data)
     return Config()
 

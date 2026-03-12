@@ -203,10 +203,16 @@ class ZuultimateAuthMiddleware(BaseHTTPMiddleware):
             if e.code in (401, 403):
                 logger.debug(f"Auth validation failed: {e.code}")
             else:
-                logger.warning(f"Zuultimate call failed: {e}")
+                logger.warning(f"Zuultimate call failed: {e.code} {e.reason}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning(f"Zuultimate returned invalid JSON: {e}")
+            return None
+        except urllib.error.URLError as e:
+            logger.warning(f"Zuultimate unreachable: {e.reason}")
             return None
         except Exception as e:
-            logger.warning(f"Zuultimate unreachable: {e}")
+            logger.warning(f"Zuultimate request error: {e}")
             return None
 
     def _check_cache(self, key: str) -> Optional[AuthContext]:

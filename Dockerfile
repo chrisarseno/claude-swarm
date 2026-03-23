@@ -53,4 +53,4 @@ EXPOSE 8766
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8766/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "swarm.api.server:app", "--host", "0.0.0.0", "--port", "8766"]
+CMD ["python", "-m", "uvicorn", "swarm.api.server:create_app", "--factory", "--host", "0.0.0.0", "--port", "8766"]

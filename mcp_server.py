@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2024-2026 Chris Arsenault / 1450 Enterprises LLC
 """MCP Server for Claude Swarm.
 
-This server exposes Claude Swarm functionality as MCP tools that can be used
-by Claude Code and other MCP clients.
+Exposes Claude Swarm orchestration as MCP tools for Claude Code and other
+MCP clients. Implemented with FastMCP — the protocol envelope (JSON-RPC 2.0,
+initialize / notifications / shutdown) is handled by the SDK.
+
+Run via: python mcp_server.py  (stdio transport, invoked by Claude Code)
 """
 
 import asyncio
@@ -11,7 +16,9 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-# Add src to path
+from mcp.server.fastmcp import FastMCP
+
+# Add src to path so the swarm package is importable when invoked as a script.
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from swarm.core.orchestrator import SwarmOrchestrator
@@ -21,15 +28,24 @@ from swarm.utils.logger import setup_logging, get_logger
 
 logger = get_logger(__name__)
 
-# Global orchestrator instance
+mcp = FastMCP("claude-swarm", json_response=True)
+
+# ---------------------------------------------------------------------------
+# Orchestrator — lazy singleton, initialised on first tool call
+# ---------------------------------------------------------------------------
 _orchestrator: Optional[SwarmOrchestrator] = None
+_orchestrator_lock = asyncio.Lock()
 
 
 async def get_orchestrator() -> SwarmOrchestrator:
-    """Get or create the global orchestrator instance."""
     global _orchestrator
+    if _orchestrator is not None:
+        return _orchestrator
 
-    if _orchestrator is None:
+    async with _orchestrator_lock:
+        if _orchestrator is not None:
+            return _orchestrator
+
         config_path = Path(__file__).parent / "config" / "swarm.yaml"
         config = load_config(config_path if config_path.exists() else None)
         setup_logging(level=config.logging.level)
@@ -37,422 +53,241 @@ async def get_orchestrator() -> SwarmOrchestrator:
         _orchestrator = SwarmOrchestrator(config)
         await _orchestrator.start(initial_instances=2)
         logger.info("orchestrator_started")
-
-    return _orchestrator
-
-
-async def shutdown_orchestrator():
-    """Shutdown the orchestrator."""
-    global _orchestrator
-    if _orchestrator:
-        await _orchestrator.stop()
-        _orchestrator = None
-        logger.info("orchestrator_stopped")
+        return _orchestrator
 
 
-# MCP Tool Definitions
-TOOLS = [
-    {
-        "name": "swarm_spawn_instances",
-        "description": "Spawn new Claude Code instances in the swarm. Use this to add more parallel processing capacity.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "number",
-                    "description": "Number of instances to spawn (1-10)",
-                    "minimum": 1,
-                    "maximum": 10
-                },
-                "working_directory": {
-                    "type": "string",
-                    "description": "Optional working directory for the instances"
-                }
-            },
-            "required": ["count"]
-        }
-    },
-    {
-        "name": "swarm_submit_task",
-        "description": "Submit a task to the swarm for execution. The task will be assigned to an available Claude instance.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "The task prompt/instruction to send to a Claude instance"
-                },
-                "name": {
-                    "type": "string",
-                    "description": "Optional descriptive name for the task"
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["low", "normal", "high", "critical"],
-                    "description": "Task priority level (default: normal)"
-                },
-                "working_directory": {
-                    "type": "string",
-                    "description": "Optional working directory for the task"
-                },
-                "depends_on": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional list of task IDs this task depends on"
-                }
-            },
-            "required": ["prompt"]
-        }
-    },
-    {
-        "name": "swarm_submit_batch",
-        "description": "Submit multiple tasks to the swarm at once for parallel execution.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "prompts": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Array of task prompts to execute in parallel"
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["low", "normal", "high", "critical"],
-                    "description": "Priority level for all tasks"
-                },
-                "working_directory": {
-                    "type": "string",
-                    "description": "Working directory for all tasks"
-                }
-            },
-            "required": ["prompts"]
-        }
-    },
-    {
-        "name": "swarm_get_status",
-        "description": "Get the current status of the swarm including instances, tasks, and workers.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {}
-        }
-    },
-    {
-        "name": "swarm_list_tasks",
-        "description": "List all tasks or filter by status (pending, queued, running, completed, failed).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "queued", "running", "completed", "failed"],
-                    "description": "Optional status filter"
-                },
-                "limit": {
-                    "type": "number",
-                    "description": "Maximum number of tasks to return (default: 50)"
-                }
-            }
-        }
-    },
-    {
-        "name": "swarm_get_task",
-        "description": "Get detailed information about a specific task including its status and results.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "The task ID to query"
-                }
-            },
-            "required": ["task_id"]
-        }
-    },
-    {
-        "name": "swarm_list_instances",
-        "description": "List all Claude Code instances in the swarm with their status and statistics.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {}
-        }
-    },
-    {
-        "name": "swarm_scale",
-        "description": "Scale the number of instances in the swarm up or down.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "target": {
-                    "type": "number",
-                    "description": "Target number of instances (0-10)",
-                    "minimum": 0,
-                    "maximum": 10
-                }
-            },
-            "required": ["target"]
-        }
-    },
-    {
-        "name": "swarm_execute_workflow",
-        "description": "Execute a workflow from a YAML file with multiple coordinated tasks.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "workflow_path": {
-                    "type": "string",
-                    "description": "Path to the workflow YAML file"
-                }
-            },
-            "required": ["workflow_path"]
-        }
-    },
-    {
-        "name": "swarm_cancel_task",
-        "description": "Cancel a pending or queued task.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "The task ID to cancel"
-                }
-            },
-            "required": ["task_id"]
-        }
-    }
-]
-
-
-# Tool Implementations
-async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Handle a tool call and return the result."""
-    orch = await get_orchestrator()
-
+def _format(data: Any) -> str:
+    """Return a JSON string for MCP text content."""
+    if isinstance(data, str):
+        return data
     try:
-        if tool_name == "swarm_spawn_instances":
-            count = arguments["count"]
-            working_dir = Path(arguments["working_directory"]) if arguments.get("working_directory") else None
+        return json.dumps(data, default=str, indent=2)
+    except (TypeError, ValueError):
+        return str(data)
 
-            instances = await orch.instance_manager.spawn_multiple(count, working_dir)
 
-            return {
-                "success": True,
-                "spawned": len(instances),
-                "instances": [i.get_info() for i in instances]
-            }
+_PRIORITY_MAP = {
+    "low": TaskPriority.LOW,
+    "normal": TaskPriority.NORMAL,
+    "high": TaskPriority.HIGH,
+    "critical": TaskPriority.CRITICAL,
+}
 
-        elif tool_name == "swarm_submit_task":
-            priority_map = {
-                "low": TaskPriority.LOW,
-                "normal": TaskPriority.NORMAL,
-                "high": TaskPriority.HIGH,
-                "critical": TaskPriority.CRITICAL
-            }
 
-            task_id = await orch.submit_task(
-                prompt=arguments["prompt"],
-                name=arguments.get("name"),
-                priority=priority_map.get(arguments.get("priority", "normal"), TaskPriority.NORMAL),
-                working_directory=Path(arguments["working_directory"]) if arguments.get("working_directory") else None,
-                depends_on=arguments.get("depends_on")
-            )
+# ══════════════════════════════════════════════════════════════════════════
+# MCP Tools
+# ══════════════════════════════════════════════════════════════════════════
 
-            return {
-                "success": True,
-                "task_id": task_id,
-                "status": "queued"
-            }
 
-        elif tool_name == "swarm_submit_batch":
-            priority_map = {
-                "low": TaskPriority.LOW,
-                "normal": TaskPriority.NORMAL,
-                "high": TaskPriority.HIGH,
-                "critical": TaskPriority.CRITICAL
-            }
+@mcp.tool()
+async def swarm_spawn_instances(count: int, working_directory: str = "") -> str:
+    """Spawn new Claude Code instances in the swarm.
 
-            task_ids = await orch.submit_batch(
-                prompts=arguments["prompts"],
-                working_directory=Path(arguments["working_directory"]) if arguments.get("working_directory") else None,
-                priority=priority_map.get(arguments.get("priority", "normal"), TaskPriority.NORMAL)
-            )
+    Use this to add more parallel processing capacity.
 
-            return {
-                "success": True,
-                "task_ids": task_ids,
-                "count": len(task_ids)
-            }
-
-        elif tool_name == "swarm_get_status":
-            status = await orch.get_status()
-            return status
-
-        elif tool_name == "swarm_list_tasks":
-            status_filter = None
-            if arguments.get("status"):
-                status_filter = TaskStatus(arguments["status"])
-
-            limit = arguments.get("limit", 50)
-            tasks = await orch.list_tasks(status_filter, limit)
-
-            return {
-                "tasks": tasks,
-                "count": len(tasks)
-            }
-
-        elif tool_name == "swarm_get_task":
-            task_info = await orch.get_task_status(arguments["task_id"])
-
-            if not task_info:
-                return {
-                    "success": False,
-                    "error": f"Task {arguments['task_id']} not found"
-                }
-
-            return {
-                "success": True,
-                "task": task_info
-            }
-
-        elif tool_name == "swarm_list_instances":
-            instances = await orch.list_instances()
-
-            return {
-                "instances": instances,
-                "count": len(instances)
-            }
-
-        elif tool_name == "swarm_scale":
-            target = arguments["target"]
-            result = await orch.scale_instances(target)
-
-            return {
-                "success": True,
-                "target": target,
-                "actual": result
-            }
-
-        elif tool_name == "swarm_execute_workflow":
-            workflow_path = Path(arguments["workflow_path"])
-
-            if not workflow_path.exists():
-                return {
-                    "success": False,
-                    "error": f"Workflow file not found: {workflow_path}"
-                }
-
-            result = await orch.execute_workflow(workflow_path)
-
-            return {
-                "success": True,
-                **result
-            }
-
-        elif tool_name == "swarm_cancel_task":
-            success = await orch.cancel_task(arguments["task_id"])
-
-            return {
-                "success": success,
-                "task_id": arguments["task_id"]
-            }
-
-        else:
-            return {
-                "success": False,
-                "error": f"Unknown tool: {tool_name}"
-            }
-
+    Args:
+        count: Number of instances to spawn (1-10).
+        working_directory: Optional working directory for the instances.
+    """
+    try:
+        orch = await get_orchestrator()
+        working_dir = Path(working_directory) if working_directory else None
+        instances = await orch.instance_manager.spawn_multiple(count, working_dir)
+        return _format({
+            "success": True,
+            "spawned": len(instances),
+            "instances": [i.get_info() for i in instances],
+        })
     except Exception as e:
-        logger.error("tool_call_error", tool=tool_name, error=str(e))
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        logger.error("tool_call_error", tool="swarm_spawn_instances", error=str(e))
+        return _format({"success": False, "error": str(e)})
 
 
-# MCP Server Protocol
-async def handle_message(message: dict) -> dict:
-    """Handle an incoming MCP message."""
-    method = message.get("method")
+@mcp.tool()
+async def swarm_submit_task(
+    prompt: str,
+    name: str = "",
+    priority: str = "normal",
+    working_directory: str = "",
+    depends_on: Optional[list[str]] = None,
+) -> str:
+    """Submit a task to the swarm for execution.
 
-    if method == "initialize":
-        return {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": {}
-            },
-            "serverInfo": {
-                "name": "claude-swarm",
-                "version": "0.1.0"
-            }
-        }
+    The task will be assigned to an available Claude instance.
 
-    elif method == "tools/list":
-        return {
-            "tools": TOOLS
-        }
-
-    elif method == "tools/call":
-        tool_name = message["params"]["name"]
-        arguments = message["params"].get("arguments", {})
-
-        result = await handle_tool_call(tool_name, arguments)
-
-        return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": json.dumps(result, indent=2)
-                }
-            ]
-        }
-
-    else:
-        return {
-            "error": {
-                "code": -32601,
-                "message": f"Method not found: {method}"
-            }
-        }
-
-
-async def main():
-    """Main MCP server loop."""
-    logger.info("claude_swarm_mcp_server_starting")
-
+    Args:
+        prompt: The task prompt / instruction to send to a Claude instance.
+        name: Optional descriptive name for the task.
+        priority: low, normal, high, or critical (default: normal).
+        working_directory: Optional working directory for the task.
+        depends_on: Optional list of task IDs this task depends on.
+    """
     try:
-        # Read from stdin, write to stdout (MCP protocol)
-        while True:
-            line = await asyncio.get_event_loop().run_in_executor(
-                None, sys.stdin.readline
-            )
+        orch = await get_orchestrator()
+        task_id = await orch.submit_task(
+            prompt=prompt,
+            name=name or None,
+            priority=_PRIORITY_MAP.get(priority, TaskPriority.NORMAL),
+            working_directory=Path(working_directory) if working_directory else None,
+            depends_on=depends_on,
+        )
+        return _format({"success": True, "task_id": task_id, "status": "queued"})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_submit_task", error=str(e))
+        return _format({"success": False, "error": str(e)})
 
-            if not line:
-                break
 
-            try:
-                message = json.loads(line)
-                response = await handle_message(message)
+@mcp.tool()
+async def swarm_submit_batch(
+    prompts: list[str],
+    priority: str = "normal",
+    working_directory: str = "",
+) -> str:
+    """Submit multiple tasks to the swarm at once for parallel execution.
 
-                # Add ID from request if present
-                if "id" in message:
-                    response["id"] = message["id"]
+    Args:
+        prompts: Array of task prompts to execute in parallel.
+        priority: Priority level for all tasks (low, normal, high, critical).
+        working_directory: Working directory for all tasks.
+    """
+    try:
+        orch = await get_orchestrator()
+        task_ids = await orch.submit_batch(
+            prompts=prompts,
+            working_directory=Path(working_directory) if working_directory else None,
+            priority=_PRIORITY_MAP.get(priority, TaskPriority.NORMAL),
+        )
+        return _format({"success": True, "task_ids": task_ids, "count": len(task_ids)})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_submit_batch", error=str(e))
+        return _format({"success": False, "error": str(e)})
 
-                # Write response
-                sys.stdout.write(json.dumps(response) + "\n")
-                sys.stdout.flush()
 
-            except json.JSONDecodeError as e:
-                logger.error("invalid_json", error=str(e))
-            except Exception as e:
-                logger.error("message_handling_error", error=str(e))
+@mcp.tool()
+async def swarm_get_status() -> str:
+    """Get the current status of the swarm including instances, tasks, and workers."""
+    try:
+        orch = await get_orchestrator()
+        status = await orch.get_status()
+        return _format(status)
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_get_status", error=str(e))
+        return _format({"success": False, "error": str(e)})
 
-    except KeyboardInterrupt:
-        logger.info("server_interrupted")
+
+@mcp.tool()
+async def swarm_list_tasks(status: str = "", limit: int = 50) -> str:
+    """List all tasks or filter by status.
+
+    Args:
+        status: Optional status filter (pending, queued, running, completed, failed).
+        limit: Maximum number of tasks to return (default: 50).
+    """
+    try:
+        orch = await get_orchestrator()
+        status_filter = TaskStatus(status) if status else None
+        tasks = await orch.list_tasks(status_filter, limit)
+        return _format({"tasks": tasks, "count": len(tasks)})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_list_tasks", error=str(e))
+        return _format({"success": False, "error": str(e)})
+
+
+@mcp.tool()
+async def swarm_get_task(task_id: str) -> str:
+    """Get detailed information about a specific task including its status and results.
+
+    Args:
+        task_id: The task ID to query.
+    """
+    try:
+        orch = await get_orchestrator()
+        task_info = await orch.get_task_status(task_id)
+        if not task_info:
+            return _format({"success": False, "error": f"Task {task_id} not found"})
+        return _format({"success": True, "task": task_info})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_get_task", error=str(e))
+        return _format({"success": False, "error": str(e)})
+
+
+@mcp.tool()
+async def swarm_list_instances() -> str:
+    """List all Claude Code instances in the swarm with their status and statistics."""
+    try:
+        orch = await get_orchestrator()
+        instances = await orch.list_instances()
+        return _format({"instances": instances, "count": len(instances)})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_list_instances", error=str(e))
+        return _format({"success": False, "error": str(e)})
+
+
+@mcp.tool()
+async def swarm_scale(target: int) -> str:
+    """Scale the number of instances in the swarm up or down.
+
+    Args:
+        target: Target number of instances (0-10).
+    """
+    try:
+        orch = await get_orchestrator()
+        result = await orch.scale_instances(target)
+        return _format({"success": True, "target": target, "actual": result})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_scale", error=str(e))
+        return _format({"success": False, "error": str(e)})
+
+
+@mcp.tool()
+async def swarm_execute_workflow(workflow_path: str) -> str:
+    """Execute a workflow from a YAML file with multiple coordinated tasks.
+
+    Args:
+        workflow_path: Path to the workflow YAML file.
+    """
+    try:
+        orch = await get_orchestrator()
+        path = Path(workflow_path)
+        if not path.exists():
+            return _format({"success": False, "error": f"Workflow file not found: {path}"})
+        result = await orch.execute_workflow(path)
+        return _format({"success": True, **result})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_execute_workflow", error=str(e))
+        return _format({"success": False, "error": str(e)})
+
+
+@mcp.tool()
+async def swarm_cancel_task(task_id: str) -> str:
+    """Cancel a pending or queued task.
+
+    Args:
+        task_id: The task ID to cancel.
+    """
+    try:
+        orch = await get_orchestrator()
+        success = await orch.cancel_task(task_id)
+        return _format({"success": success, "task_id": task_id})
+    except Exception as e:
+        logger.error("tool_call_error", tool="swarm_cancel_task", error=str(e))
+        return _format({"success": False, "error": str(e)})
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Entry point
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def main():
+    """Run the Claude Swarm MCP server (stdio transport)."""
+    logger.info("claude_swarm_mcp_server_starting")
+    try:
+        mcp.run()
     finally:
-        await shutdown_orchestrator()
+        # Best-effort cleanup. mcp.run() handles stdio teardown.
         logger.info("server_shutdown")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
